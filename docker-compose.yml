@@ -24,7 +24,7 @@ services:
       - zookeeper_data:/var/lib/zookeeper/data
       - zookeeper_logs:/var/lib/zookeeper/log
     healthcheck:
-      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      test: [ "CMD", "nc", "-z", "localhost", "2181" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -54,12 +54,12 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_LOG_RETENTION_HOURS: 168  # 7 days
-      KAFKA_LOG_RETENTION_BYTES: 1073741824  # 1GB per partition
+      KAFKA_LOG_RETENTION_HOURS: 168 # 7 days
+      KAFKA_LOG_RETENTION_BYTES: 1073741824 # 1GB per partition
     volumes:
       - kafka_data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      test: [ "CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list" ]
       interval: 10s
       timeout: 10s
       retries: 5
@@ -83,7 +83,7 @@ services:
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:9092
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8081/subjects"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8081/subjects" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -176,7 +176,7 @@ services:
       - cassandra_data:/var/lib/cassandra
       - ./schemas/cassandra:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      test: [ "CMD", "cqlsh", "-e", "describe keyspaces" ]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -236,9 +236,9 @@ volumes:
   grafana_data:
   spark_checkpoints:
 
-# =============================================================================
-# NETWORKS
-# =============================================================================
+    # =============================================================================
+    # NETWORKS
+    # =============================================================================
 networks:
   pipeline-network:
     driver: bridge

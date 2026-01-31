@@ -1,203 +1,198 @@
 """
 Spark Structured Streaming Processor
-Handles Bronze, Silver, and Gold data layer transformations.
+Main processor for the market data pipeline.
 """
-from pyspark.sql import SparkSession, DataFrame
-from pyspark.sql.functions import (
-    col, from_json, window, first, last, min as spark_min,
-    max as spark_max, sum as spark_sum, avg, count,
-    current_timestamp, lit, when, to_date
-)
-from pyspark.sql.types import (
-    StructType, StructField, StringType, DoubleType, LongType, ArrayType
-)
 import logging
+import os
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
+
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.streaming import StreamingQuery
+
+from .sinks import CassandraSink, CassandraSinkConfig, ConsoleSink, SinkManager
+from .transformations import (
+    apply_watermark,
+    calculate_ohlcv_5m,
+    parse_with_event_time,
+    to_bronze,
+    to_silver,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class SparkProcessor:
-    """
-    Spark Structured Streaming processor for market data.
+# =============================================================================
+# Configuration
+# =============================================================================
+
+@dataclass
+class SparkProcessorConfig:
+    """Configuration for the Spark processor."""
+    # Kafka settings
+    kafka_bootstrap_servers: str = "localhost:9092"
+    kafka_topic: str = "trades_raw"
+    kafka_starting_offsets: str = "latest"
     
-    Implements Bronze → Silver → Gold data layer architecture.
-    """
+    # Cassandra settings
+    cassandra_host: str = "localhost"
+    cassandra_port: int = 9042
+    cassandra_keyspace: str = "market_data"
     
-    # Schema for incoming trade data
-    TRADE_SCHEMA = StructType([
-        StructField("s", StringType(), True),      # symbol
-        StructField("p", DoubleType(), True),      # price
-        StructField("v", LongType(), True),        # volume
-        StructField("t", LongType(), True),        # timestamp (ms)
-        StructField("c", ArrayType(StringType()), True),  # conditions
-    ])
+    # Processing settings
+    checkpoint_location: str = "/tmp/spark-checkpoints"
+    trigger_interval: str = "10 seconds"
+    watermark_delay: str = "10 minutes"
     
-    def __init__(
-        self,
-        spark: SparkSession,
-        kafka_servers: str,
-        cassandra_host: str,
-        checkpoint_base: str = "/tmp/checkpoints"
-    ):
-        """
-        Initialize Spark processor.
-        
-        Args:
-            spark: SparkSession instance
-            kafka_servers: Kafka bootstrap servers
-            cassandra_host: Cassandra host address
-            checkpoint_base: Base path for checkpoints
-        """
-        self.spark = spark
-        self.kafka_servers = kafka_servers
-        self.cassandra_host = cassandra_host
-        self.checkpoint_base = checkpoint_base
-        
-    def read_kafka_stream(self, topic: str) -> DataFrame:
-        """
-        Create streaming DataFrame from Kafka topic.
-        
-        Args:
-            topic: Kafka topic name
-            
-        Returns:
-            Streaming DataFrame
-        """
-        return self.spark.readStream \
-            .format("kafka") \
-            .option("kafka.bootstrap.servers", self.kafka_servers) \
-            .option("subscribe", topic) \
-            .option("startingOffsets", "latest") \
-            .option("failOnDataLoss", "false") \
-            .load()
+    # Feature flags
+    enable_bronze: bool = True
+    enable_silver: bool = True
+    enable_gold: bool = True
+    enable_console: bool = False
     
-    def parse_trades(self, kafka_df: DataFrame) -> DataFrame:
-        """
-        Parse raw Kafka messages into structured trades.
-        
-        Args:
-            kafka_df: Raw Kafka streaming DataFrame
-            
-        Returns:
-            Parsed trades DataFrame
-        """
-        return kafka_df \
-            .select(
-                from_json(col("value").cast("string"), self.TRADE_SCHEMA).alias("data"),
-                col("timestamp").alias("kafka_timestamp")
-            ) \
-            .select(
-                col("data.s").alias("symbol"),
-                col("data.p").alias("price"),
-                col("data.v").alias("volume"),
-                (col("data.t") / 1000).cast("timestamp").alias("trade_timestamp"),
-                col("data.c").alias("conditions"),
-                col("kafka_timestamp").alias("ingestion_time")
-            )
-    
-    def bronze_pipeline(self, trades_df: DataFrame) -> None:
-        """
-        Bronze layer: Persist raw data without transformation.
-        
-        Args:
-            trades_df: Parsed trades DataFrame
-        """
-        query = trades_df \
-            .withColumn("trade_date", to_date("trade_timestamp")) \
-            .writeStream \
-            .format("org.apache.spark.sql.cassandra") \
-            .option("keyspace", "market_data") \
-            .option("table", "trades_bronze") \
-            .option("checkpointLocation", f"{self.checkpoint_base}/bronze") \
-            .outputMode("append") \
-            .start()
-        
-        logger.info("Bronze pipeline started")
-        return query
-    
-    def silver_transformations(self, bronze_df: DataFrame) -> DataFrame:
-        """
-        Silver layer: Clean and validate data.
-        
-        Args:
-            bronze_df: Bronze layer DataFrame
-            
-        Returns:
-            Cleaned DataFrame
-        """
-        return bronze_df \
-            .filter(col("volume") > 0) \
-            .filter(col("price") > 0) \
-            .withColumn(
-                "is_valid",
-                when((col("volume") > 0) & (col("price") > 0), lit(True))
-                .otherwise(lit(False))
-            ) \
-            .withColumn("processed_at", current_timestamp()) \
-            .dropDuplicates(["symbol", "trade_timestamp"])
-    
-    def gold_aggregations(self, silver_df: DataFrame, window_duration: str = "5 minutes") -> DataFrame:
-        """
-        Gold layer: Windowed OHLCV aggregations.
-        
-        Args:
-            silver_df: Silver layer DataFrame
-            window_duration: Window size for aggregation
-            
-        Returns:
-            Aggregated DataFrame
-        """
-        return silver_df \
-            .withWatermark("trade_timestamp", "10 minutes") \
-            .groupBy(
-                col("symbol"),
-                window(col("trade_timestamp"), window_duration, "1 minute")
-            ) \
-            .agg(
-                first("price").alias("open"),
-                spark_max("price").alias("high"),
-                spark_min("price").alias("low"),
-                last("price").alias("close"),
-                spark_sum("volume").alias("volume"),
-                count("*").alias("trade_count"),
-                avg("price").alias("vwap")
-            ) \
-            .select(
-                col("symbol"),
-                to_date("window.start").alias("window_date"),
-                col("window.start").alias("window_start"),
-                col("window.end").alias("window_end"),
-                col("open"), col("high"), col("low"), col("close"),
-                col("volume"), col("trade_count"), col("vwap")
-            )
+    @classmethod
+    def from_env(cls) -> "SparkProcessorConfig":
+        """Load configuration from environment variables."""
+        return cls(
+            kafka_bootstrap_servers=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+            kafka_topic=os.getenv("KAFKA_TOPIC", "trades_raw"),
+            cassandra_host=os.getenv("CASSANDRA_HOST", "localhost"),
+            cassandra_keyspace=os.getenv("CASSANDRA_KEYSPACE", "market_data"),
+            checkpoint_location=os.getenv("SPARK_CHECKPOINT_DIR", "/tmp/spark-checkpoints"),
+            watermark_delay=os.getenv("WATERMARK_DELAY", "10 minutes"),
+        )
 
 
-def create_spark_session(app_name: str = "MarketDataPipeline") -> SparkSession:
-    """Create configured Spark session."""
+# =============================================================================
+# Spark Session Builder
+# =============================================================================
+
+def create_spark_session(
+    app_name: str = "MarketDataProcessor",
+    cassandra_host: str = "localhost"
+) -> SparkSession:
+    """
+    Create and configure SparkSession with required dependencies.
+    
+    Args:
+        app_name: Application name for Spark UI
+        cassandra_host: Cassandra connection host
+        
+    Returns:
+        Configured SparkSession
+    """
     return SparkSession.builder \
         .appName(app_name) \
         .config("spark.jars.packages", 
                 "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,"
                 "com.datastax.spark:spark-cassandra-connector_2.12:3.4.1") \
-        .config("spark.cassandra.connection.host", "cassandra") \
+        .config("spark.cassandra.connection.host", cassandra_host) \
         .config("spark.sql.streaming.checkpointLocation", "/tmp/checkpoints") \
+        .config("spark.sql.shuffle.partitions", "4") \
+        .config("spark.streaming.stopGracefullyOnShutdown", "true") \
         .getOrCreate()
 
 
-# Example usage
-if __name__ == "__main__":
-    spark = create_spark_session()
+# =============================================================================
+# Market Data Processor
+# =============================================================================
+
+class MarketDataProcessor:
+    """
+    Main processor for market data streaming pipeline.
     
-    processor = SparkProcessor(
-        spark=spark,
-        kafka_servers="kafka:9092",
-        cassandra_host="cassandra"
-    )
+    Reads from Kafka, applies transformations, and writes to Cassandra
+    using the Medallion architecture (Bronze → Silver → Gold).
+    """
     
-    # Read from Kafka
-    kafka_df = processor.read_kafka_stream("trades_raw")
-    trades_df = processor.parse_trades(kafka_df)
+    def __init__(self, config: SparkProcessorConfig, spark: Optional[SparkSession] = None):
+        self.config = config
+        self.spark = spark or create_spark_session(
+            cassandra_host=config.cassandra_host
+        )
+        self.sink_manager = SinkManager()
+        self._source_df: Optional[DataFrame] = None
+        
+    def read_from_kafka(self) -> DataFrame:
+        """
+        Read streaming data from Kafka topic.
+        
+        Returns:
+            Streaming DataFrame with raw Kafka messages
+        """
+        logger.info(f"Reading from Kafka topic: {self.config.kafka_topic}")
+        
+        self._source_df = self.spark.readStream \
+            .format("kafka") \
+            .option("kafka.bootstrap.servers", self.config.kafka_bootstrap_servers) \
+            .option("subscribe", self.config.kafka_topic) \
+            .option("startingOffsets", self.config.kafka_starting_offsets) \
+            .option("failOnDataLoss", "false") \
+            .load()
+        
+        return self._source_df
     
-    # Start bronze pipeline
-    bronze_query = processor.bronze_pipeline(trades_df)
-    bronze_query.awaitTermination()
+    def process(self) -> None:
+        """
+        Start the streaming pipeline with all configured layers.
+        """
+        if self._source_df is None:
+            self.read_from_kafka()
+            
+        # Parse and add event time
+        parsed_df = parse_with_event_time(self._source_df)
+        
+        # Apply watermark for late data handling
+        watermarked_df = apply_watermark(parsed_df, self.config.watermark_delay)
+        
+        # Create Cassandra sink
+        cassandra_config = CassandraSinkConfig(
+            keyspace=self.config.cassandra_keyspace,
+            checkpoint_location=self.config.checkpoint_location,
+            trigger_interval=self.config.trigger_interval,
+            host=self.config.cassandra_host,
+        )
+        cassandra_sink = CassandraSink(cassandra_config)
+        
+        # Bronze Layer: Raw data
+        if self.config.enable_bronze:
+            bronze_df = to_bronze(watermarked_df)
+            query = cassandra_sink.write_to_bronze(bronze_df)
+            self.sink_manager.add_query("bronze", query)
+            logger.info("Started Bronze layer stream")
+        
+        # Silver Layer: Cleaned data
+        if self.config.enable_silver:
+            silver_df = to_silver(watermarked_df)
+            query = cassandra_sink.write_to_silver(silver_df)
+            self.sink_manager.add_query("silver", query)
+            logger.info("Started Silver layer stream")
+        
+        # Gold Layer: OHLCV aggregations
+        if self.config.enable_gold:
+            gold_df = calculate_ohlcv_5m(watermarked_df)
+            query = cassandra_sink.write_to_gold(gold_df)
+            self.sink_manager.add_query("gold_5m", query)
+            logger.info("Started Gold layer stream")
+        
+        # Console output for debugging
+        if self.config.enable_console:
+            console_sink = ConsoleSink()
+            query = console_sink.write(watermarked_df, "debug_console")
+            self.sink_manager.add_query("console", query)
+            logger.info("Started Console debug stream")
+    
+    def await_termination(self) -> None:
+        """Wait for all streaming queries to terminate."""
+        logger.info("Awaiting termination of all streaming queries...")
+        self.sink_manager.await_all()
+    
+    def stop(self) -> None:
+        """Stop all streaming queries gracefully."""
+        logger.info("Stopping all streaming queries...")
+        self.sink_manager.stop_all()
+        self.spark.stop()
+        
+    def get_status(self) -> Dict:
+        """Get status of all streaming queries."""
+        return self.sink_manager.get_status()
