@@ -1,0 +1,42 @@
+{
+  "type": "record",
+  "name": "Trade",
+  "namespace": "com.finnhub.market",
+  "doc": "Stock trade event from Finnhub WebSocket API",
+  "fields": [
+    {
+      "name": "symbol",
+      "type": "string",
+      "doc": "Stock ticker symbol (e.g., AAPL, GOOGL)"
+    },
+    {
+      "name": "price",
+      "type": "double",
+      "doc": "Trade execution price in USD"
+    },
+    {
+      "name": "volume",
+      "type": "long",
+      "doc": "Number of shares traded"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Trade timestamp in Unix milliseconds"
+    },
+    {
+      "name": "conditions",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "default": [],
+      "doc": "Trade condition codes (e.g., regular, odd lot)"
+    },
+    {
+      "name": "ingestion_time",
+      "type": "long",
+      "doc": "Pipeline ingestion timestamp in Unix milliseconds"
+    }
+  ]
+}

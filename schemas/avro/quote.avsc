@@ -1,0 +1,43 @@
+{
+  "type": "record",
+  "name": "Quote",
+  "namespace": "com.finnhub.market",
+  "doc": "Stock quote (bid/ask) from Finnhub API",
+  "fields": [
+    {
+      "name": "symbol",
+      "type": "string",
+      "doc": "Stock ticker symbol"
+    },
+    {
+      "name": "bid_price",
+      "type": "double",
+      "doc": "Best bid price"
+    },
+    {
+      "name": "bid_size",
+      "type": "long",
+      "doc": "Bid size in shares"
+    },
+    {
+      "name": "ask_price",
+      "type": "double",
+      "doc": "Best ask price"
+    },
+    {
+      "name": "ask_size",
+      "type": "long",
+      "doc": "Ask size in shares"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "doc": "Quote timestamp in Unix milliseconds"
+    },
+    {
+      "name": "ingestion_time",
+      "type": "long",
+      "doc": "Pipeline ingestion timestamp in Unix milliseconds"
+    }
+  ]
+}
