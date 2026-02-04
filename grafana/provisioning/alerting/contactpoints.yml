@@ -1,0 +1,18 @@
+# Grafana Alerting Contact Points
+# Note: Slack integration is optional. Configure SLACK_WEBHOOK_URL in .env to enable.
+# If not configured, alerts will only appear in Grafana UI.
+
+apiVersion: 1
+
+# Uncomment and configure the following when Slack webhook is available:
+# 
+# contactPoints:
+#   - orgId: 1
+#     name: slack-alerts
+#     receivers:
+#       - uid: slack-critical
+#         type: slack
+#         settings:
+#           recipient: "#alerts-critical"
+#           url: "${SLACK_WEBHOOK_URL}"
+#         disableResolveMessage: false

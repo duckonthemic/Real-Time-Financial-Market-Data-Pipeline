@@ -172,9 +172,17 @@ docker-compose exec cassandra nodetool status
 
 ## 📚 Documentation
 
-- [Architecture Overview](docs/architecture/README.md)
+- [System Analysis & Architecture](PLAN/SYSTEM_ANALYSIS.md)
+- [Deployment Guide](docs/DEPLOYMENT.md)
+- [Operational Runbook](docs/RUNBOOK.md)
 - [Research Findings](docs/research/)
-- [Operational Runbook](docs/runbooks/)
+
+## 🧪 Verify Installation
+
+```bash
+# Run smoke test
+python scripts/smoke_test.py -v
+```
 
 ## 📄 License
 

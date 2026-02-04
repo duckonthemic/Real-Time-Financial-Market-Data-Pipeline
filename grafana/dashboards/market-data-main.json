@@ -1,0 +1,476 @@
+{
+    "annotations": {
+        "list": []
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "id": null,
+    "links": [],
+    "liveNow": true,
+    "panels": [
+        {
+            "gridPos": {
+                "h": 3,
+                "w": 6,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "title": "Pipeline Status",
+            "type": "stat",
+            "datasource": {
+                "type": "hadesarchitect-cassandra-datasource",
+                "uid": "cassandra"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [
+                        {
+                            "options": {
+                                "0": {
+                                    "color": "red",
+                                    "index": 0,
+                                    "text": "DOWN"
+                                }
+                            },
+                            "type": "value"
+                        },
+                        {
+                            "options": {
+                                "from": 1,
+                                "to": 999999,
+                                "result": {
+                                    "color": "green",
+                                    "index": 1,
+                                    "text": "ONLINE"
+                                }
+                            },
+                            "type": "range"
+                        }
+                    ],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "red",
+                                "value": null
+                            },
+                            {
+                                "color": "green",
+                                "value": 1
+                            }
+                        ]
+                    }
+                }
+            },
+            "options": {
+                "colorMode": "background",
+                "graphMode": "none",
+                "justifyMode": "center",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "targets": [
+                {
+                    "rawQuery": true,
+                    "queryType": "query",
+                    "target": "SELECT COUNT(*) as status FROM trades_silver WHERE trade_date = toDate(now()) LIMIT 1"
+                }
+            ]
+        },
+        {
+            "gridPos": {
+                "h": 3,
+                "w": 6,
+                "x": 6,
+                "y": 0
+            },
+            "id": 2,
+            "title": "Trades Today",
+            "type": "stat",
+            "datasource": {
+                "type": "hadesarchitect-cassandra-datasource",
+                "uid": "cassandra"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "unit": "short"
+                }
+            },
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "targets": [
+                {
+                    "rawQuery": true,
+                    "queryType": "query",
+                    "target": "SELECT COUNT(*) as trades FROM trades_silver WHERE trade_date = toDate(now()) ALLOW FILTERING"
+                }
+            ]
+        },
+        {
+            "gridPos": {
+                "h": 3,
+                "w": 6,
+                "x": 12,
+                "y": 0
+            },
+            "id": 3,
+            "title": "Total Volume",
+            "type": "stat",
+            "datasource": {
+                "type": "hadesarchitect-cassandra-datasource",
+                "uid": "cassandra"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "unit": "short"
+                }
+            },
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "targets": [
+                {
+                    "rawQuery": true,
+                    "queryType": "query",
+                    "target": "SELECT SUM(volume) as total_volume FROM trades_gold_5m WHERE window_date = toDate(now()) ALLOW FILTERING"
+                }
+            ]
+        },
+        {
+            "gridPos": {
+                "h": 3,
+                "w": 6,
+                "x": 18,
+                "y": 0
+            },
+            "id": 4,
+            "title": "Last Update",
+            "type": "stat",
+            "datasource": {
+                "type": "hadesarchitect-cassandra-datasource",
+                "uid": "cassandra"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "unit": "dateTimeAsIso"
+                }
+            },
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "targets": [
+                {
+                    "rawQuery": true,
+                    "queryType": "query",
+                    "target": "SELECT MAX(window_start) as last_update FROM trades_gold_5m WHERE window_date = toDate(now()) ALLOW FILTERING"
+                }
+            ]
+        },
+        {
+            "gridPos": {
+                "h": 10,
+                "w": 24,
+                "x": 0,
+                "y": 3
+            },
+            "id": 5,
+            "title": "5-Minute OHLCV - All Symbols",
+            "type": "candlestick",
+            "datasource": {
+                "type": "hadesarchitect-cassandra-datasource",
+                "uid": "cassandra"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "custom": {
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        }
+                    }
+                }
+            },
+            "options": {
+                "mode": "candles",
+                "includeAllFields": true
+            },
+            "targets": [
+                {
+                    "rawQuery": true,
+                    "queryType": "query",
+                    "target": "SELECT window_start, open, high, low, close, volume FROM trades_gold_5m WHERE symbol = 'AAPL' AND window_date = toDate(now()) ORDER BY window_start DESC LIMIT 50"
+                }
+            ]
+        },
+        {
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 13
+            },
+            "id": 6,
+            "title": "Volume by Symbol",
+            "type": "barchart",
+            "datasource": {
+                "type": "hadesarchitect-cassandra-datasource",
+                "uid": "cassandra"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "fillOpacity": 80,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "lineWidth": 1,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        }
+                    },
+                    "unit": "short"
+                }
+            },
+            "options": {
+                "barRadius": 0,
+                "barWidth": 0.97,
+                "groupWidth": 0.7,
+                "legend": {
+                    "calcs": [],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "orientation": "auto",
+                "showValue": "auto",
+                "stacking": "none",
+                "tooltip": {
+                    "mode": "single",
+                    "sort": "none"
+                },
+                "xTickLabelRotation": 0,
+                "xTickLabelSpacing": 0
+            },
+            "targets": [
+                {
+                    "rawQuery": true,
+                    "queryType": "query",
+                    "target": "SELECT symbol, SUM(volume) as total_volume FROM trades_gold_5m WHERE window_date = toDate(now()) GROUP BY symbol ALLOW FILTERING"
+                }
+            ]
+        },
+        {
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 13
+            },
+            "id": 7,
+            "title": "Trade Count by Symbol",
+            "type": "piechart",
+            "datasource": {
+                "type": "hadesarchitect-cassandra-datasource",
+                "uid": "cassandra"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    }
+                }
+            },
+            "options": {
+                "legend": {
+                    "displayMode": "list",
+                    "placement": "right",
+                    "showLegend": true
+                },
+                "pieType": "pie",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": true
+                },
+                "tooltip": {
+                    "mode": "single",
+                    "sort": "none"
+                }
+            },
+            "targets": [
+                {
+                    "rawQuery": true,
+                    "queryType": "query",
+                    "target": "SELECT symbol, SUM(trade_count) as trades FROM trades_gold_5m WHERE window_date = toDate(now()) GROUP BY symbol ALLOW FILTERING"
+                }
+            ]
+        },
+        {
+            "gridPos": {
+                "h": 8,
+                "w": 24,
+                "x": 0,
+                "y": 21
+            },
+            "id": 8,
+            "title": "Latest Prices",
+            "type": "table",
+            "datasource": {
+                "type": "hadesarchitect-cassandra-datasource",
+                "uid": "cassandra"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "custom": {
+                        "align": "auto",
+                        "cellOptions": {
+                            "type": "auto"
+                        },
+                        "inspect": false
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    }
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byName",
+                            "options": "last_price"
+                        },
+                        "properties": [
+                            {
+                                "id": "unit",
+                                "value": "currencyUSD"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "options": {
+                "cellHeight": "sm",
+                "footer": {
+                    "countRows": false,
+                    "fields": "",
+                    "reducer": [
+                        "sum"
+                    ],
+                    "show": false
+                },
+                "showHeader": true,
+                "sortBy": [
+                    {
+                        "desc": true,
+                        "displayName": "last_trade_time"
+                    }
+                ]
+            },
+            "targets": [
+                {
+                    "rawQuery": true,
+                    "queryType": "query",
+                    "target": "SELECT symbol, last_price, last_volume, last_trade_time, price_change, price_change_pct FROM latest_prices"
+                }
+            ]
+        }
+    ],
+    "refresh": "5s",
+    "schemaVersion": 38,
+    "style": "dark",
+    "tags": [
+        "market-data",
+        "real-time",
+        "finnhub"
+    ],
+    "templating": {
+        "list": []
+    },
+    "time": {
+        "from": "now-1h",
+        "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "browser",
+    "title": "Real-Time Market Data",
+    "uid": "market-data-main",
+    "version": 1,
+    "weekStart": ""
+}

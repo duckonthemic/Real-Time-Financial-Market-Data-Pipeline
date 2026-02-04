@@ -171,6 +171,38 @@ class MarketHours:
             next_day += timedelta(days=1)
             
         return next_day
+    
+    @classmethod
+    def next_market_open(cls, dt: Optional[datetime] = None) -> datetime:
+        """
+        Get the datetime of the next market open.
+        
+        Args:
+            dt: Datetime to calculate from (defaults to now)
+            
+        Returns:
+            Datetime of the next market open in Eastern Time
+        """
+        dt = dt or cls.now_et()
+        
+        # If market is currently open, return current open time
+        if cls.is_regular_hours(dt):
+            return datetime.combine(dt.date(), cls.MARKET_OPEN, tzinfo=cls.ET)
+        
+        # Determine target date
+        target_date = dt.date()
+        
+        # If before market open today and it's a trading day
+        if (dt.time() < cls.MARKET_OPEN and 
+            not cls.is_weekend(dt) and 
+            not cls.is_holiday(dt)):
+            pass  # Use today's date
+        else:
+            # After close or weekend/holiday, use next trading day
+            target_date = cls._next_trading_day(dt)
+        
+        next_open = datetime.combine(target_date, cls.MARKET_OPEN)
+        return cls.ET.localize(next_open)
 
 
 # Example usage

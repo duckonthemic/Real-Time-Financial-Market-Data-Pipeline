@@ -1,0 +1,73 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: Pipeline Health
+    folder: Market Data
+    interval: 1m
+    rules:
+      - uid: pipeline-down
+        title: Pipeline Down - Zero Trades
+        condition: A
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
+            datasourceUid: cassandra
+            model:
+              rawQuery: true
+              target: "SELECT COUNT(*) as trades FROM trades_silver WHERE trade_date = toDate(now()) ALLOW FILTERING"
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 5m
+        annotations:
+          summary: "No trades received in the last 10 minutes"
+          description: "The pipeline may be down. Check Finnhub connection and Kafka."
+        labels:
+          severity: critical
+          service: pipeline
+
+      - uid: high-latency
+        title: High End-to-End Latency
+        condition: B
+        data:
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: cassandra
+            model:
+              rawQuery: true
+              target: "SELECT AVG(toUnixTimestamp(processed_at) - toUnixTimestamp(trade_timestamp)) / 1000 as latency_seconds FROM trades_silver WHERE trade_date = toDate(now()) ALLOW FILTERING"
+        noDataState: NoData
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: "High latency detected ({{ $value }}s)"
+          description: "End-to-end latency exceeds 10 seconds. Check Spark processing."
+        labels:
+          severity: warning
+          service: spark
+
+      - uid: low-volume
+        title: Abnormally Low Trading Volume
+        condition: C
+        data:
+          - refId: C
+            relativeTimeRange:
+              from: 3600
+              to: 0
+            datasourceUid: cassandra
+            model:
+              rawQuery: true
+              target: "SELECT SUM(volume) as total_volume FROM trades_gold_5m WHERE window_date = toDate(now()) ALLOW FILTERING"
+        noDataState: NoData
+        execErrState: Error
+        for: 15m
+        annotations:
+          summary: "Trading volume is abnormally low"
+          description: "Total volume in the last hour is below expected threshold."
+        labels:
+          severity: warning
+          service: market
