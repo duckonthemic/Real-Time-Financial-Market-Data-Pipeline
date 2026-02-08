@@ -3,11 +3,14 @@ apiVersion: 1
 datasources:
   - name: Cassandra
     type: hadesarchitect-cassandra-datasource
+    uid: cassandra
     access: proxy
-    url: cassandra:9042
     jsonData:
+      host: cassandra
+      port: 9042
       keyspace: market_data
       user: cassandra
+      consistency: ONE
     secureJsonData:
       password: cassandra
     isDefault: true

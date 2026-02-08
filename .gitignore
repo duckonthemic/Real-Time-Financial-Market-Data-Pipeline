@@ -126,3 +126,4 @@ PLAN/
 *.pem
 *.key
 secrets/
+src/utils/depj2.code-workspace
