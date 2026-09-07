@@ -226,6 +226,7 @@ services:
   grafana:
     <<: *runtime
     profiles: ["dashboard"]
+    networks: [pipeline, observer]
     image: market-grafana:local
     build:
       context: .
@@ -260,6 +261,7 @@ services:
 networks:
   pipeline:
     internal: true
+  observer:
 
 volumes:
   kafka_data:
