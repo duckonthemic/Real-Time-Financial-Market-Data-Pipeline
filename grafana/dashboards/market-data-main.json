@@ -1,476 +1,143 @@
 {
-    "annotations": {
-        "list": []
+  "annotations": {"list": []},
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "Evidence header",
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+      "options": {
+        "mode": "markdown",
+        "content": "# Checkpoint Recovery Evidence\nRun `${run_id}` · Kafka → Spark Structured Streaming → Cassandra\n\nThis observer reports **at-least-once processing with replay-safe projections**. The immutable HTML report remains the canonical review artifact."
+      },
+      "transparent": true
     },
-    "editable": true,
-    "fiscalYearStartMonth": 0,
-    "graphTooltip": 0,
-    "id": null,
-    "links": [],
-    "liveNow": true,
-    "panels": [
-        {
-            "gridPos": {
-                "h": 3,
-                "w": 6,
-                "x": 0,
-                "y": 0
-            },
-            "id": 1,
-            "title": "Pipeline Status",
-            "type": "stat",
-            "datasource": {
-                "type": "hadesarchitect-cassandra-datasource",
-                "uid": "cassandra"
-            },
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "thresholds"
-                    },
-                    "mappings": [
-                        {
-                            "options": {
-                                "0": {
-                                    "color": "red",
-                                    "index": 0,
-                                    "text": "DOWN"
-                                }
-                            },
-                            "type": "value"
-                        },
-                        {
-                            "options": {
-                                "from": 1,
-                                "to": 999999,
-                                "result": {
-                                    "color": "green",
-                                    "index": 1,
-                                    "text": "ONLINE"
-                                }
-                            },
-                            "type": "range"
-                        }
-                    ],
-                    "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                            {
-                                "color": "red",
-                                "value": null
-                            },
-                            {
-                                "color": "green",
-                                "value": 1
-                            }
-                        ]
-                    }
-                }
-            },
-            "options": {
-                "colorMode": "background",
-                "graphMode": "none",
-                "justifyMode": "center",
-                "orientation": "auto",
-                "reduceOptions": {
-                    "calcs": [
-                        "lastNotNull"
-                    ],
-                    "fields": "",
-                    "values": false
-                },
-                "textMode": "auto"
-            },
-            "targets": [
-                {
-                    "rawQuery": true,
-                    "queryType": "query",
-                    "target": "SELECT COUNT(*) as status FROM trades_silver WHERE trade_date = toDate(now()) LIMIT 1"
-                }
-            ]
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Run verdict",
+      "description": "Independent data-contract verdict for the selected run.",
+      "gridPos": {"h": 5, "w": 8, "x": 0, "y": 4},
+      "datasource": {"type": "hadesarchitect-cassandra-datasource", "uid": "cassandra"},
+      "targets": [{"refId": "A", "rawQuery": true, "queryType": "query", "target": "SELECT data_contract_status FROM pipeline_runs WHERE run_id = '${run_id}'"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [{"type": "value", "options": {"PASSED": {"text": "DATA CONTRACT PASSED", "color": "green"}, "FAILED": {"text": "DATA CONTRACT FAILED", "color": "red"}}}],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}]}
         },
-        {
-            "gridPos": {
-                "h": 3,
-                "w": 6,
-                "x": 6,
-                "y": 0
-            },
-            "id": 2,
-            "title": "Trades Today",
-            "type": "stat",
-            "datasource": {
-                "type": "hadesarchitect-cassandra-datasource",
-                "uid": "cassandra"
-            },
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "palette-classic"
-                    },
-                    "unit": "short"
-                }
-            },
-            "options": {
-                "colorMode": "value",
-                "graphMode": "area",
-                "justifyMode": "auto",
-                "orientation": "auto",
-                "reduceOptions": {
-                    "calcs": [
-                        "lastNotNull"
-                    ],
-                    "fields": "",
-                    "values": false
-                },
-                "textMode": "auto"
-            },
-            "targets": [
-                {
-                    "rawQuery": true,
-                    "queryType": "query",
-                    "target": "SELECT COUNT(*) as trades FROM trades_silver WHERE trade_date = toDate(now()) ALLOW FILTERING"
-                }
-            ]
-        },
-        {
-            "gridPos": {
-                "h": 3,
-                "w": 6,
-                "x": 12,
-                "y": 0
-            },
-            "id": 3,
-            "title": "Total Volume",
-            "type": "stat",
-            "datasource": {
-                "type": "hadesarchitect-cassandra-datasource",
-                "uid": "cassandra"
-            },
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "palette-classic"
-                    },
-                    "unit": "short"
-                }
-            },
-            "options": {
-                "colorMode": "value",
-                "graphMode": "area",
-                "justifyMode": "auto",
-                "orientation": "auto",
-                "reduceOptions": {
-                    "calcs": [
-                        "lastNotNull"
-                    ],
-                    "fields": "",
-                    "values": false
-                },
-                "textMode": "auto"
-            },
-            "targets": [
-                {
-                    "rawQuery": true,
-                    "queryType": "query",
-                    "target": "SELECT SUM(volume) as total_volume FROM trades_gold_5m WHERE window_date = toDate(now()) ALLOW FILTERING"
-                }
-            ]
-        },
-        {
-            "gridPos": {
-                "h": 3,
-                "w": 6,
-                "x": 18,
-                "y": 0
-            },
-            "id": 4,
-            "title": "Last Update",
-            "type": "stat",
-            "datasource": {
-                "type": "hadesarchitect-cassandra-datasource",
-                "uid": "cassandra"
-            },
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "thresholds"
-                    },
-                    "unit": "dateTimeAsIso"
-                }
-            },
-            "options": {
-                "colorMode": "value",
-                "graphMode": "none",
-                "justifyMode": "auto",
-                "orientation": "auto",
-                "reduceOptions": {
-                    "calcs": [
-                        "lastNotNull"
-                    ],
-                    "fields": "",
-                    "values": false
-                },
-                "textMode": "auto"
-            },
-            "targets": [
-                {
-                    "rawQuery": true,
-                    "queryType": "query",
-                    "target": "SELECT MAX(window_start) as last_update FROM trades_gold_5m WHERE window_date = toDate(now()) ALLOW FILTERING"
-                }
-            ]
-        },
-        {
-            "gridPos": {
-                "h": 10,
-                "w": 24,
-                "x": 0,
-                "y": 3
-            },
-            "id": 5,
-            "title": "5-Minute OHLCV - All Symbols",
-            "type": "candlestick",
-            "datasource": {
-                "type": "hadesarchitect-cassandra-datasource",
-                "uid": "cassandra"
-            },
-            "fieldConfig": {
-                "defaults": {
-                    "custom": {
-                        "hideFrom": {
-                            "legend": false,
-                            "tooltip": false,
-                            "viz": false
-                        }
-                    }
-                }
-            },
-            "options": {
-                "mode": "candles",
-                "includeAllFields": true
-            },
-            "targets": [
-                {
-                    "rawQuery": true,
-                    "queryType": "query",
-                    "target": "SELECT window_start, open, high, low, close, volume FROM trades_gold_5m WHERE symbol = 'AAPL' AND window_date = toDate(now()) ORDER BY window_start DESC LIMIT 50"
-                }
-            ]
-        },
-        {
-            "gridPos": {
-                "h": 8,
-                "w": 12,
-                "x": 0,
-                "y": 13
-            },
-            "id": 6,
-            "title": "Volume by Symbol",
-            "type": "barchart",
-            "datasource": {
-                "type": "hadesarchitect-cassandra-datasource",
-                "uid": "cassandra"
-            },
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "palette-classic"
-                    },
-                    "custom": {
-                        "axisCenteredZero": false,
-                        "axisColorMode": "text",
-                        "axisLabel": "",
-                        "fillOpacity": 80,
-                        "gradientMode": "none",
-                        "hideFrom": {
-                            "legend": false,
-                            "tooltip": false,
-                            "viz": false
-                        },
-                        "lineWidth": 1,
-                        "stacking": {
-                            "group": "A",
-                            "mode": "none"
-                        }
-                    },
-                    "unit": "short"
-                }
-            },
-            "options": {
-                "barRadius": 0,
-                "barWidth": 0.97,
-                "groupWidth": 0.7,
-                "legend": {
-                    "calcs": [],
-                    "displayMode": "list",
-                    "placement": "bottom",
-                    "showLegend": true
-                },
-                "orientation": "auto",
-                "showValue": "auto",
-                "stacking": "none",
-                "tooltip": {
-                    "mode": "single",
-                    "sort": "none"
-                },
-                "xTickLabelRotation": 0,
-                "xTickLabelSpacing": 0
-            },
-            "targets": [
-                {
-                    "rawQuery": true,
-                    "queryType": "query",
-                    "target": "SELECT symbol, SUM(volume) as total_volume FROM trades_gold_5m WHERE window_date = toDate(now()) GROUP BY symbol ALLOW FILTERING"
-                }
-            ]
-        },
-        {
-            "gridPos": {
-                "h": 8,
-                "w": 12,
-                "x": 12,
-                "y": 13
-            },
-            "id": 7,
-            "title": "Trade Count by Symbol",
-            "type": "piechart",
-            "datasource": {
-                "type": "hadesarchitect-cassandra-datasource",
-                "uid": "cassandra"
-            },
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "palette-classic"
-                    }
-                }
-            },
-            "options": {
-                "legend": {
-                    "displayMode": "list",
-                    "placement": "right",
-                    "showLegend": true
-                },
-                "pieType": "pie",
-                "reduceOptions": {
-                    "calcs": [
-                        "lastNotNull"
-                    ],
-                    "fields": "",
-                    "values": true
-                },
-                "tooltip": {
-                    "mode": "single",
-                    "sort": "none"
-                }
-            },
-            "targets": [
-                {
-                    "rawQuery": true,
-                    "queryType": "query",
-                    "target": "SELECT symbol, SUM(trade_count) as trades FROM trades_gold_5m WHERE window_date = toDate(now()) GROUP BY symbol ALLOW FILTERING"
-                }
-            ]
-        },
-        {
-            "gridPos": {
-                "h": 8,
-                "w": 24,
-                "x": 0,
-                "y": 21
-            },
-            "id": 8,
-            "title": "Latest Prices",
-            "type": "table",
-            "datasource": {
-                "type": "hadesarchitect-cassandra-datasource",
-                "uid": "cassandra"
-            },
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "thresholds"
-                    },
-                    "custom": {
-                        "align": "auto",
-                        "cellOptions": {
-                            "type": "auto"
-                        },
-                        "inspect": false
-                    },
-                    "mappings": [],
-                    "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                            {
-                                "color": "green",
-                                "value": null
-                            }
-                        ]
-                    }
-                },
-                "overrides": [
-                    {
-                        "matcher": {
-                            "id": "byName",
-                            "options": "last_price"
-                        },
-                        "properties": [
-                            {
-                                "id": "unit",
-                                "value": "currencyUSD"
-                            }
-                        ]
-                    }
-                ]
-            },
-            "options": {
-                "cellHeight": "sm",
-                "footer": {
-                    "countRows": false,
-                    "fields": "",
-                    "reducer": [
-                        "sum"
-                    ],
-                    "show": false
-                },
-                "showHeader": true,
-                "sortBy": [
-                    {
-                        "desc": true,
-                        "displayName": "last_trade_time"
-                    }
-                ]
-            },
-            "targets": [
-                {
-                    "rawQuery": true,
-                    "queryType": "query",
-                    "target": "SELECT symbol, last_price, last_volume, last_trade_time, price_change, price_change_pct FROM latest_prices"
-                }
-            ]
-        }
-    ],
-    "refresh": "5s",
-    "schemaVersion": 38,
-    "style": "dark",
-    "tags": [
-        "market-data",
-        "real-time",
-        "finnhub"
-    ],
-    "templating": {
-        "list": []
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value_and_name", "wideLayout": true}
     },
-    "time": {
-        "from": "now-1h",
-        "to": "now"
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Portfolio release",
+      "description": "Presentation readiness is separate from the correctness verdict.",
+      "gridPos": {"h": 5, "w": 8, "x": 8, "y": 4},
+      "datasource": {"type": "hadesarchitect-cassandra-datasource", "uid": "cassandra"},
+      "targets": [{"refId": "A", "rawQuery": true, "queryType": "query", "target": "SELECT portfolio_release_status FROM pipeline_runs WHERE run_id = '${run_id}'"}],
+      "fieldConfig": {
+        "defaults": {
+          "color": {"mode": "thresholds"},
+          "mappings": [{"type": "value", "options": {"READY": {"text": "READY FOR REVIEW", "color": "green"}, "NOT_READY": {"text": "NOT READY FOR CV", "color": "orange"}}}],
+          "thresholds": {"mode": "absolute", "steps": [{"color": "orange", "value": null}]}
+        },
+        "overrides": []
+      },
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value_and_name", "wideLayout": true}
     },
-    "timepicker": {},
-    "timezone": "browser",
-    "title": "Real-Time Market Data",
-    "uid": "market-data-main",
-    "version": 1,
-    "weekStart": ""
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Run identity",
+      "gridPos": {"h": 5, "w": 8, "x": 16, "y": 4},
+      "datasource": {"type": "hadesarchitect-cassandra-datasource", "uid": "cassandra"},
+      "targets": [{"refId": "A", "rawQuery": true, "queryType": "query", "target": "SELECT run_id, dataset_id, state, completed_at FROM pipeline_runs WHERE run_id = '${run_id}'"}],
+      "fieldConfig": {"defaults": {"custom": {"align": "left", "cellOptions": {"type": "auto"}, "inspect": false}}, "overrides": []},
+      "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true}
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Invariant scorecard",
+      "description": "Expected and actual values remain adjacent; no green aggregate hides a failed invariant.",
+      "gridPos": {"h": 12, "w": 14, "x": 0, "y": 9},
+      "datasource": {"type": "hadesarchitect-cassandra-datasource", "uid": "cassandra"},
+      "targets": [{"refId": "A", "rawQuery": true, "queryType": "query", "target": "SELECT check_name, expected_value, actual_value, status, detail FROM run_checks_by_run WHERE run_id = '${run_id}'"}],
+      "fieldConfig": {
+        "defaults": {"custom": {"align": "left", "cellOptions": {"type": "auto"}, "inspect": false}},
+        "overrides": [{"matcher": {"id": "byName", "options": "status"}, "properties": [{"id": "custom.cellOptions", "value": {"type": "color-text"}}, {"id": "mappings", "value": [{"type": "value", "options": {"PASS": {"text": "PASS", "color": "green"}, "FAIL": {"text": "FAIL", "color": "red"}}}]}]}]
+      },
+      "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true, "sortBy": [{"desc": false, "displayName": "check_name"}]}
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Recovery timeline",
+      "description": "The failure and restart are observable states, not a hidden test implementation detail.",
+      "gridPos": {"h": 12, "w": 10, "x": 14, "y": 9},
+      "datasource": {"type": "hadesarchitect-cassandra-datasource", "uid": "cassandra"},
+      "targets": [{"refId": "A", "rawQuery": true, "queryType": "query", "target": "SELECT transition_seq, occurred_at, state, actor, reason FROM run_state_transitions_by_run WHERE run_id = '${run_id}'"}],
+      "fieldConfig": {"defaults": {"custom": {"align": "left", "cellOptions": {"type": "auto"}, "inspect": false}}, "overrides": []},
+      "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true, "sortBy": [{"desc": false, "displayName": "transition_seq"}]}
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Run-scoped lag",
+      "description": "Lag must rise after SIGKILL and return to zero at the captured end frontier.",
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 21},
+      "datasource": {"type": "hadesarchitect-cassandra-datasource", "uid": "cassandra"},
+      "targets": [{"refId": "A", "rawQuery": true, "queryType": "query", "target": "SELECT sampled_at, total_lag, processed_count FROM run_metrics_by_run WHERE run_id = '${run_id}'"}],
+      "fieldConfig": {
+        "defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "records", "axisPlacement": "auto", "drawStyle": "line", "fillOpacity": 8, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 4, "scaleDistribution": {"type": "linear"}, "showPoints": "auto", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "unit": "short"},
+        "overrides": []
+      },
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}}
+    },
+    {
+      "id": 8,
+      "type": "text",
+      "title": "Evidence semantics",
+      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 31},
+      "options": {
+        "mode": "markdown",
+        "content": "### What this proves\n- Every captured Kafka coordinate reached Bronze.\n- Canonical identities converged in Silver despite injected duplicates and replay.\n- Invalid inputs reconciled to deterministic DLQ reasons.\n- The same Spark checkpoint resumed after a real `SIGKILL` and caught up.\n\nIt does **not** claim cross-system exactly-once delivery or live exchange connectivity."
+      },
+      "transparent": true
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 40,
+  "tags": ["portfolio", "recovery", "kafka", "spark", "cassandra"],
+  "templating": {
+    "list": [
+      {
+        "current": {"selected": true, "text": "run-not-selected", "value": "run-not-selected"},
+        "description": "Paste the RUN_ID printed by scripts/demo.py.",
+        "hide": 0,
+        "label": "Run ID",
+        "name": "run_id",
+        "options": [],
+        "query": "run-not-selected",
+        "skipUrlSync": false,
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": {"from": "now-30m", "to": "now"},
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "Market Data Reliability Lab",
+  "uid": "market-data-reliability",
+  "version": 1,
+  "weekStart": "monday"
 }

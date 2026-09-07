@@ -1,0 +1,24 @@
+{
+  "manifest_version": 1,
+  "generator_version": "1.0.0",
+  "scenario": "recovery-showcase",
+  "dataset_id": "market-replay-showcase-v1",
+  "seed": 20260908,
+  "symbols": ["AAPL", "GOOGL", "JPM", "MSFT", "NVDA", "TSLA"],
+  "event_time_min_ms": 1735828200000,
+  "event_time_max_ms": 1735828499750,
+  "canonical_records": 1200,
+  "duplicate_records": 24,
+  "invalid_records": 12,
+  "total_records": 1236,
+  "partitions": 3,
+  "rejection_counts": {
+    "BAD_WIRE": 2,
+    "HEADER_PAYLOAD_MISMATCH": 2,
+    "EMPTY_SYMBOL": 2,
+    "NON_POSITIVE_PRICE": 2,
+    "NON_POSITIVE_VOLUME": 2,
+    "TIMESTAMP_OUT_OF_RANGE": 2
+  },
+  "canonical_event_set_sha256": "e4cdd4c162672c4ba27ca7caa027b9c4f80983bc4a095135ba77a3cab331d876"
+}

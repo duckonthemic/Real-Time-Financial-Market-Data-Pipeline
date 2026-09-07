@@ -1,0 +1,19 @@
+{
+  "type": "record",
+  "name": "TradeEventV1",
+  "namespace": "io.marketpipeline.contracts",
+  "doc": "Deterministic replay trade used by the Market Data Reliability Lab.",
+  "fields": [
+    {"name": "event_id", "type": "string"},
+    {"name": "run_id", "type": "string"},
+    {"name": "source", "type": {"type": "enum", "name": "TradeSource", "symbols": ["REPLAY"]}},
+    {"name": "symbol", "type": "string"},
+    {"name": "price", "type": "double"},
+    {"name": "volume", "type": "long"},
+    {"name": "event_time_ms", "type": "long"},
+    {"name": "conditions", "type": {"type": "array", "items": "string"}, "default": []},
+    {"name": "dataset_id", "type": "string"},
+    {"name": "source_sequence", "type": "long"},
+    {"name": "schema_version", "type": "int", "default": 1}
+  ]
+}

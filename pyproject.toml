@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "market-data-reliability-lab"
+version = "1.0.0"
+description = "Deterministic Kafka-Spark-Cassandra recovery lab with independently verifiable evidence."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "cassandra-driver==3.29.2",
+  "confluent-kafka[avro,schemaregistry]==2.6.1",
+  "fastavro==1.9.7",
+  "pyspark==3.5.5",
+]
+
+[project.optional-dependencies]
+dev = [
+  "jsonschema==4.23.0",
+  "mypy==1.13.0",
+  "pytest==8.3.4",
+  "pytest-cov==6.0.0",
+  "ruff==0.8.4",
+]
+
+[project.scripts]
+market-pipeline-producer = "market_pipeline.producer.main:main"
+market-pipeline-streaming = "market_pipeline.streaming.main:main"
+market-pipeline-verify = "market_pipeline.verification.main:main"
+market-pipeline-gold = "market_pipeline.analytics.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "scripts"]
+python_files = ["test_*.py"]
+markers = [
+  "contract: file and data contract tests",
+  "integration: tests requiring Docker services",
+  "slow: tests taking more than five seconds",
+]
+addopts = "-q --strict-markers --tb=short"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "scripts", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["market_pipeline", "demo_support"]
+mypy_path = ["src", "scripts"]
+warn_unused_ignores = true

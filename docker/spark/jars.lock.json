@@ -1,0 +1,11 @@
+{
+  "lock_version": 1,
+  "scala_binary_version": "2.12",
+  "spark_version": "3.5.5",
+  "roots": [
+    "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.5",
+    "org.apache.spark:spark-avro_2.12:3.5.5",
+    "com.datastax.spark:spark-cassandra-connector_2.12:3.5.1"
+  ],
+  "verification": "docker/spark/verify_jars.py emits the resolved closure and SHA-256 values from the built image"
+}
