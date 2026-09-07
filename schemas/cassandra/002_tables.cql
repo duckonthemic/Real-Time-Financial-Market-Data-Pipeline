@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS market_data.pipeline_runs (
   end_offsets_exclusive map<int, bigint>,
   data_contract_status text,
   portfolio_release_status text,
+  data_contract_code int,
+  portfolio_release_code int,
   created_at timestamp,
   started_at timestamp,
   failure_at timestamp,

@@ -11,7 +11,7 @@
       "id": 1,
       "type": "text",
       "title": "Evidence header",
-      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 0},
       "options": {
         "mode": "markdown",
         "content": "# Checkpoint Recovery Evidence\nRun `${run_id}` · Kafka → Spark Structured Streaming → Cassandra\n\nThis observer reports **at-least-once processing with replay-safe projections**. The immutable HTML report remains the canonical review artifact."
@@ -23,45 +23,53 @@
       "type": "stat",
       "title": "Run verdict",
       "description": "Independent data-contract verdict for the selected run.",
-      "gridPos": {"h": 5, "w": 8, "x": 0, "y": 4},
+      "gridPos": {"h": 5, "w": 6, "x": 0, "y": 5},
       "datasource": {"type": "hadesarchitect-cassandra-datasource", "uid": "cassandra"},
-      "targets": [{"refId": "A", "rawQuery": true, "queryType": "query", "target": "SELECT data_contract_status FROM pipeline_runs WHERE run_id = '${run_id}'"}],
+      "targets": [{"refId": "A", "rawQuery": true, "queryType": "query", "target": "SELECT data_contract_code FROM pipeline_runs WHERE run_id = '${run_id}'"}],
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "thresholds"},
-          "mappings": [{"type": "value", "options": {"PASSED": {"text": "DATA CONTRACT PASSED", "color": "green"}, "FAILED": {"text": "DATA CONTRACT FAILED", "color": "red"}}}],
+          "mappings": [{"type": "value", "options": {"1": {"text": "DATA CONTRACT PASSED", "color": "green"}, "0": {"text": "DATA CONTRACT FAILED", "color": "red"}}}],
           "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}]}
         },
         "overrides": []
       },
-      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value_and_name", "wideLayout": true}
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "limit": 1, "values": true}, "textMode": "value", "wideLayout": true}
     },
     {
       "id": 3,
       "type": "stat",
       "title": "Portfolio release",
       "description": "Presentation readiness is separate from the correctness verdict.",
-      "gridPos": {"h": 5, "w": 8, "x": 8, "y": 4},
+      "gridPos": {"h": 5, "w": 6, "x": 6, "y": 5},
       "datasource": {"type": "hadesarchitect-cassandra-datasource", "uid": "cassandra"},
-      "targets": [{"refId": "A", "rawQuery": true, "queryType": "query", "target": "SELECT portfolio_release_status FROM pipeline_runs WHERE run_id = '${run_id}'"}],
+      "targets": [{"refId": "A", "rawQuery": true, "queryType": "query", "target": "SELECT portfolio_release_code FROM pipeline_runs WHERE run_id = '${run_id}'"}],
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "thresholds"},
-          "mappings": [{"type": "value", "options": {"READY": {"text": "READY FOR REVIEW", "color": "green"}, "NOT_READY": {"text": "NOT READY FOR CV", "color": "orange"}}}],
+          "mappings": [{"type": "value", "options": {"1": {"text": "READY FOR REVIEW", "color": "green"}, "0": {"text": "NOT READY FOR CV", "color": "orange"}}}],
           "thresholds": {"mode": "absolute", "steps": [{"color": "orange", "value": null}]}
         },
         "overrides": []
       },
-      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}, "textMode": "value_and_name", "wideLayout": true}
+      "options": {"colorMode": "background", "graphMode": "none", "justifyMode": "center", "orientation": "horizontal", "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "limit": 1, "values": true}, "textMode": "value", "wideLayout": true}
     },
     {
       "id": 4,
       "type": "table",
       "title": "Run identity",
-      "gridPos": {"h": 5, "w": 8, "x": 16, "y": 4},
+      "gridPos": {"h": 5, "w": 12, "x": 12, "y": 5},
       "datasource": {"type": "hadesarchitect-cassandra-datasource", "uid": "cassandra"},
       "targets": [{"refId": "A", "rawQuery": true, "queryType": "query", "target": "SELECT run_id, dataset_id, state, completed_at FROM pipeline_runs WHERE run_id = '${run_id}'"}],
-      "fieldConfig": {"defaults": {"custom": {"align": "left", "cellOptions": {"type": "auto"}, "inspect": false}}, "overrides": []},
+      "fieldConfig": {
+        "defaults": {"custom": {"align": "left", "cellOptions": {"type": "auto"}, "inspect": false}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "run_id"}, "properties": [{"id": "custom.width", "value": 180}]},
+          {"matcher": {"id": "byName", "options": "dataset_id"}, "properties": [{"id": "custom.width", "value": 200}]},
+          {"matcher": {"id": "byName", "options": "state"}, "properties": [{"id": "custom.width", "value": 80}]},
+          {"matcher": {"id": "byName", "options": "completed_at"}, "properties": [{"id": "custom.width", "value": 160}]}
+        ]
+      },
       "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true}
     },
     {
@@ -69,12 +77,19 @@
       "type": "table",
       "title": "Invariant scorecard",
       "description": "Expected and actual values remain adjacent; no green aggregate hides a failed invariant.",
-      "gridPos": {"h": 12, "w": 14, "x": 0, "y": 9},
+      "gridPos": {"h": 12, "w": 14, "x": 0, "y": 10},
       "datasource": {"type": "hadesarchitect-cassandra-datasource", "uid": "cassandra"},
       "targets": [{"refId": "A", "rawQuery": true, "queryType": "query", "target": "SELECT check_name, expected_value, actual_value, status, detail FROM run_checks_by_run WHERE run_id = '${run_id}'"}],
+      "transformations": [{"id": "merge", "options": {}}],
       "fieldConfig": {
         "defaults": {"custom": {"align": "left", "cellOptions": {"type": "auto"}, "inspect": false}},
-        "overrides": [{"matcher": {"id": "byName", "options": "status"}, "properties": [{"id": "custom.cellOptions", "value": {"type": "color-text"}}, {"id": "mappings", "value": [{"type": "value", "options": {"PASS": {"text": "PASS", "color": "green"}, "FAIL": {"text": "FAIL", "color": "red"}}}]}]}]
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "check_name"}, "properties": [{"id": "custom.width", "value": 150}]},
+          {"matcher": {"id": "byName", "options": "expected_value"}, "properties": [{"id": "custom.width", "value": 150}]},
+          {"matcher": {"id": "byName", "options": "actual_value"}, "properties": [{"id": "custom.width", "value": 150}]},
+          {"matcher": {"id": "byName", "options": "status"}, "properties": [{"id": "custom.width", "value": 65}, {"id": "custom.cellOptions", "value": {"type": "color-text"}}, {"id": "mappings", "value": [{"type": "value", "options": {"PASS": {"text": "PASS", "color": "green"}, "FAIL": {"text": "FAIL", "color": "red"}}}]}]},
+          {"matcher": {"id": "byName", "options": "detail"}, "properties": [{"id": "custom.width", "value": 240}]}
+        ]
       },
       "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true, "sortBy": [{"desc": false, "displayName": "check_name"}]}
     },
@@ -83,10 +98,20 @@
       "type": "table",
       "title": "Recovery timeline",
       "description": "The failure and restart are observable states, not a hidden test implementation detail.",
-      "gridPos": {"h": 12, "w": 10, "x": 14, "y": 9},
+      "gridPos": {"h": 12, "w": 10, "x": 14, "y": 10},
       "datasource": {"type": "hadesarchitect-cassandra-datasource", "uid": "cassandra"},
       "targets": [{"refId": "A", "rawQuery": true, "queryType": "query", "target": "SELECT transition_seq, occurred_at, state, actor, reason FROM run_state_transitions_by_run WHERE run_id = '${run_id}'"}],
-      "fieldConfig": {"defaults": {"custom": {"align": "left", "cellOptions": {"type": "auto"}, "inspect": false}}, "overrides": []},
+      "transformations": [{"id": "merge", "options": {}}],
+      "fieldConfig": {
+        "defaults": {"custom": {"align": "left", "cellOptions": {"type": "auto"}, "inspect": false}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "transition_seq"}, "properties": [{"id": "custom.width", "value": 95}]},
+          {"matcher": {"id": "byName", "options": "occurred_at"}, "properties": [{"id": "custom.width", "value": 150}]},
+          {"matcher": {"id": "byName", "options": "state"}, "properties": [{"id": "custom.width", "value": 115}]},
+          {"matcher": {"id": "byName", "options": "actor"}, "properties": [{"id": "custom.width", "value": 75}]},
+          {"matcher": {"id": "byName", "options": "reason"}, "properties": [{"id": "custom.width", "value": 125}]}
+        ]
+      },
       "options": {"cellHeight": "sm", "footer": {"countRows": false, "fields": "", "reducer": ["sum"], "show": false}, "showHeader": true, "sortBy": [{"desc": false, "displayName": "transition_seq"}]}
     },
     {
@@ -94,9 +119,10 @@
       "type": "timeseries",
       "title": "Run-scoped lag",
       "description": "Lag must rise after SIGKILL and return to zero at the captured end frontier.",
-      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 21},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 22},
       "datasource": {"type": "hadesarchitect-cassandra-datasource", "uid": "cassandra"},
       "targets": [{"refId": "A", "rawQuery": true, "queryType": "query", "target": "SELECT sampled_at, total_lag, processed_count FROM run_metrics_by_run WHERE run_id = '${run_id}'"}],
+      "transformations": [{"id": "merge", "options": {}}],
       "fieldConfig": {
         "defaults": {"color": {"mode": "palette-classic"}, "custom": {"axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "records", "axisPlacement": "auto", "drawStyle": "line", "fillOpacity": 8, "gradientMode": "none", "hideFrom": {"legend": false, "tooltip": false, "viz": false}, "lineInterpolation": "linear", "lineWidth": 2, "pointSize": 4, "scaleDistribution": {"type": "linear"}, "showPoints": "auto", "spanNulls": false, "stacking": {"group": "A", "mode": "none"}, "thresholdsStyle": {"mode": "off"}}, "unit": "short"},
         "overrides": []
@@ -107,7 +133,7 @@
       "id": 8,
       "type": "text",
       "title": "Evidence semantics",
-      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 31},
+      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 32},
       "options": {
         "mode": "markdown",
         "content": "### What this proves\n- Every captured Kafka coordinate reached Bronze.\n- Canonical identities converged in Silver despite injected duplicates and replay.\n- Invalid inputs reconciled to deterministic DLQ reasons.\n- The same Spark checkpoint resumed after a real `SIGKILL` and caught up.\n\nIt does **not** claim cross-system exactly-once delivery or live exchange connectivity."
@@ -133,7 +159,7 @@
       }
     ]
   },
-  "time": {"from": "now-30m", "to": "now"},
+  "time": {"from": "now-24h", "to": "now+24h"},
   "timepicker": {},
   "timezone": "utc",
   "title": "Market Data Reliability Lab",

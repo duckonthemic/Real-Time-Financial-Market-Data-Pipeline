@@ -87,7 +87,7 @@ def publish_evidence(
     session = cluster.connect(config.cassandra_keyspace)
     try:
         session.execute(
-            "INSERT INTO pipeline_runs (run_id,dataset_id,state,expected_counts,start_offsets_inclusive,end_offsets_exclusive,data_contract_status,portfolio_release_status,created_at,started_at,failure_at,recovered_at,completed_at,state_reason) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            "INSERT INTO pipeline_runs (run_id,dataset_id,state,expected_counts,start_offsets_inclusive,end_offsets_exclusive,data_contract_status,portfolio_release_status,data_contract_code,portfolio_release_code,created_at,started_at,failure_at,recovered_at,completed_at,state_reason) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (
                 config.run_id,
                 config.dataset_id,
@@ -97,6 +97,8 @@ def publish_evidence(
                 ends,
                 report.get("data_contract_status"),
                 report.get("portfolio_release_status"),
+                1 if report.get("data_contract_status") == "PASSED" else 0,
+                1 if report.get("portfolio_release_status") == "READY" else 0,
                 _timestamp(states.get("CREATED", {}).get("occurred_at")),
                 _timestamp(states.get("PRODUCING", {}).get("occurred_at")),
                 _timestamp(states.get("FAILURE_INJECTED", {}).get("occurred_at")),

@@ -97,7 +97,19 @@ class RecoveryScenario:
     @property
     def dashboard_url(self) -> str:
         port = int(self.config.values["ports"]["grafana"])
-        return f"http://127.0.0.1:{port}/d/market-data-reliability?var-run_id={self.run_id}"
+        url = f"http://127.0.0.1:{port}/d/market-data-reliability?var-run_id={self.run_id}"
+        samples = _read_jsonl(self.metrics_file)
+        timestamps = [
+            datetime.fromisoformat(str(sample["sampled_at"]).replace("Z", "+00:00"))
+            for sample in samples
+            if sample.get("sampled_at")
+        ]
+        if not timestamps:
+            return url
+        margin_ms = 15_000
+        start_ms = int(min(timestamps).timestamp() * 1000) - margin_ms
+        end_ms = int(max(timestamps).timestamp() * 1000) + margin_ms
+        return f"{url}&from={start_ms}&to={end_ms}"
 
     def _transition(self, state: str, actor: str, reason: str) -> None:
         if self._state is not None:
@@ -315,6 +327,7 @@ class RecoveryScenario:
                         artifact_type="run-report",
                     )
                     self._run_values["portfolio_release_status"] = report["portfolio_release_status"]
+                    self._run_values["dashboard_url"] = self.dashboard_url
                     atomic_write_json(self.run_file, artifact("run", self.run_id, **self._run_values))
                 from market_pipeline.verification.report import write_report
 

@@ -47,3 +47,18 @@ def test_silver_timestamp_preserves_manifest_milliseconds() -> None:
     )
     assert "timestamp_millis" in source
     assert "from_unixtime" not in source
+
+
+def test_dashboard_verdicts_use_numeric_observer_projections() -> None:
+    schema = (ROOT / "schemas" / "cassandra" / "002_tables.cql").read_text(encoding="utf-8")
+    dashboard = (ROOT / "grafana" / "dashboards" / "market-data-main.json").read_text(
+        encoding="utf-8"
+    )
+    publisher = (
+        ROOT / "src" / "market_pipeline" / "verification" / "main.py"
+    ).read_text(encoding="utf-8")
+
+    for field in ("data_contract_code", "portfolio_release_code"):
+        assert f"{field} int" in schema
+        assert f"SELECT {field}" in dashboard
+        assert field in publisher

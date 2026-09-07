@@ -4,6 +4,7 @@ import copy
 import json
 from pathlib import Path
 from typing import Sequence
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -52,6 +53,30 @@ def make_test_config(tmp_path: Path) -> DemoConfig:
     )
     (tmp_path / "compose.yaml").write_text("services: {}\n", encoding="utf-8")
     return DemoConfig(tmp_path / "config.toml", tmp_path, values)
+
+
+def test_dashboard_url_bounds_the_run_metrics(tmp_path: Path) -> None:
+    scenario = RecoveryScenario(
+        make_test_config(tmp_path),
+        run_id=RUN_ID,
+        scenario_name="recovery-showcase",
+    )
+    scenario.run_directory.mkdir(parents=True)
+    scenario.metrics_file.write_text(
+        "\n".join(
+            [
+                json.dumps({"sampled_at": "2026-09-07T09:02:27.500Z"}),
+                json.dumps({"sampled_at": "2026-09-07T09:03:50.900Z"}),
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    query = parse_qs(urlparse(scenario.dashboard_url).query)
+
+    assert query["var-run_id"] == [RUN_ID]
+    assert int(query["from"][0]) == 1788771732500
+    assert int(query["to"][0]) == 1788771845900
 
 
 class ScenarioRunner:
