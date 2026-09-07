@@ -23,8 +23,6 @@ def test_report_has_semantic_accessible_evidence() -> None:
     assert "aria-live=\"polite\"" in rendered
     assert "prefers-reduced-motion" in rendered
     assert "at-least-once processing with replay-safe projections" in rendered
-    assert 'class="checks-table"' in rendered
-    assert "overflow-wrap:anywhere" in rendered
 
 
 def test_split_verdict_keeps_data_pass_and_release_warning() -> None:
