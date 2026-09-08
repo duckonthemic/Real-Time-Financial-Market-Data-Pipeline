@@ -1,174 +1,164 @@
-# 📈 Real-Time Financial Market Data Pipeline
+# Market Data Reliability Lab
 
-A production-ready streaming data pipeline for processing real-time stock market data using **Apache Kafka**, **Apache Spark**, **Apache Cassandra**, and **Grafana**.
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Apache Kafka](https://img.shields.io/badge/Kafka-KRaft-231F20?logo=apachekafka)](https://kafka.apache.org/)
+[![Apache Spark](https://img.shields.io/badge/Spark-3.5.5-E25A1C?logo=apachespark&logoColor=white)](https://spark.apache.org/)
+[![Apache Cassandra](https://img.shields.io/badge/Cassandra-4.1.7-1287B1?logo=apachecassandra&logoColor=white)](https://cassandra.apache.org/)
 
-![Architecture](https://img.shields.io/badge/Architecture-Lambda-blue)
-![Kafka](https://img.shields.io/badge/Kafka-3.5-orange)
-![Spark](https://img.shields.io/badge/Spark-3.4.1-yellow)
-![Cassandra](https://img.shields.io/badge/Cassandra-4.1-green)
-![Grafana](https://img.shields.io/badge/Grafana-10.2-purple)
+A deterministic Kafka → Spark Structured Streaming → Cassandra recovery lab. One command publishes a fixed market-data fixture, kills the Spark driver with `SIGKILL`, restarts it from the same checkpoint, reconciles 12 correctness invariants, builds 5-minute OHLCV/VWAP rows, and produces a Grafana dashboard plus an immutable HTML evidence report.
 
-## 🏗️ Architecture
+This is a reliability demonstration, not a claim of a production trading platform. It proves a bounded, repeatable recovery path using local Docker infrastructure.
 
+## What you can verify
+
+- Kafka input coverage by exact `(topic, partition, offset)` coordinates.
+- Avro wire compatibility through Confluent Schema Registry.
+- Replay-safe Silver projections keyed by deterministic event identity.
+- Invalid-record quarantine in both Kafka DLQ and Cassandra.
+- A real non-graceful Spark driver failure, visible lag growth, checkpoint restart, and catch-up to zero lag.
+- Exact bounded Gold OHLCV/VWAP reconciliation.
+- A separate portfolio-release gate that smoke-tests Grafana, its Cassandra datasource, and the dashboard definition.
+
+The guarantee is **at-least-once processing with replay-safe projections**. The project does not claim end-to-end exactly-once delivery.
+
+## Architecture
+
+```text
+deterministic fixture
+        │ Avro + headers
+        ▼
+ Kafka KRaft ───────────────► Kafka DLQ
+        │ captured offsets          ▲
+        ▼                           │ invalid
+ Spark Structured Streaming ───────┘
+        │ same checkpoint after SIGKILL
+        ├──► Bronze: source-coordinate truth
+        ├──► Silver: validated, replay-safe events
+        └──► batch ledger
+                  │
+                  ▼
+        bounded Gold finalizer ───► 5-minute OHLCV/VWAP
+                  │
+          independent verifier
+             ┌────┴────┐
+             ▼         ▼
+       HTML report   Grafana
 ```
-┌─────────────┐    ┌─────────┐    ┌─────────────┐    ┌───────────┐    ┌─────────┐
-│  Finnhub    │───▶│  Kafka  │───▶│    Spark    │───▶│ Cassandra │───▶│ Grafana │
-│  WebSocket  │    │         │    │  Streaming  │    │           │    │         │
-└─────────────┘    └─────────┘    └─────────────┘    └───────────┘    └─────────┘
-     API            Message        Bronze/Silver       Time-Series      Real-Time
-    Source          Queue          /Gold Layers         Storage        Dashboard
+
+See [Architecture](docs/ARCHITECTURE.md) for the data model, state machine, failure semantics, and trade-offs.
+
+## Quick start
+
+You need Python 3.11+, Docker Desktop with Compose v2, at least 4 CPUs, 8 GiB RAM, 10 GiB free disk, and free loopback ports `3000` and `8080`.
+
+1. Clone the repository and enter it.
+
+   ```bash
+   git clone https://github.com/duckonthemic/Real-Time-Financial-Market-Data-Pipeline.git
+   cd Real-Time-Financial-Market-Data-Pipeline
+   ```
+
+2. Run the shorter recovery scenario. No market-data API key is required.
+
+   ```bash
+   python scripts/demo.py --scenario recovery-showcase --run-id run-local-showcase
+   ```
+
+The first run builds the local images. A successful run ends with output like:
+
+```text
+PASS: run-local-showcase
+REPORT: .../artifacts/run-local-showcase/report.html
+DASHBOARD: http://127.0.0.1:3000/d/market-data-reliability?...
 ```
 
-### Data Layers (Medallion Architecture)
-
-| Layer | Table | Description |
-|-------|-------|-------------|
-| **Bronze** | `trades_bronze` | Raw trade data with Kafka metadata |
-| **Silver** | `trades_silver` | Cleaned & validated trades |
-| **Gold** | `trades_gold_5m` | 5-minute OHLCV aggregations |
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Docker & Docker Compose
-- Python 3.10+
-- Finnhub API Key ([Get free key](https://finnhub.io/))
-
-### 1. Clone & Configure
+The showcase fixture contains 1,200 canonical records, 24 deliberate duplicates, and 12 invalid records. Use the larger 12,763-record scenario when you want a longer recovery window:
 
 ```bash
-git clone <repository-url>
-cd depj2
-
-# Create .env file
-cp .env.example .env
-# Edit .env and add your FINNHUB_API_KEY
+python scripts/demo.py --scenario recovery --run-id run-local-standard
 ```
 
-### 2. Start Infrastructure
+Open the printed report and dashboard URLs. Grafana uses username `admin`; its generated per-run password is stored locally in `artifacts/<run-id>/compose.env`. Generated evidence and credentials are ignored by Git.
+
+Clean only that run's containers, networks, volumes, and checkpoint while retaining its evidence:
 
 ```bash
-docker-compose up -d
+python scripts/demo.py --cleanup-run run-local-showcase
 ```
 
-### 3. Initialize Schema
+Evidence deletion is a separate, guarded action and is allowed only after runtime cleanup:
 
 ```bash
-# Create Cassandra keyspace and tables
-docker-compose exec cassandra cqlsh -f /docker-entrypoint-initdb.d/init.cql
+python scripts/demo.py --purge-evidence run-local-showcase
 ```
 
-### 4. Run Producer (Terminal 1)
+## Evidence contract
+
+The verifier reports these 12 named checks:
+
+| Area | Checks |
+|---|---|
+| Delivery and source | `producer_delivery`, `source_coverage`, `offset_frontier`, `terminal_lag_zero` |
+| Identity and validity | `silver_identity_set`, `logical_reconciliation`, `sampled_value_integrity` |
+| Quarantine | `dlq_reconciliation`, `kafka_dlq_distinct_keys` |
+| Recovery | `batch_ledger_complete`, `checkpoint_recovery` |
+| Analytics | `gold_ohlcv_exact` |
+
+Each run writes versioned JSON/JSONL evidence and `report.html` under `artifacts/<run-id>/`. The report keeps expected and actual values adjacent so a green headline cannot hide a failed invariant.
+
+## Development
 
 ```bash
-pip install -r requirements.txt
-python -m src.producer.main --ignore-market-hours --kafka-servers localhost:29092
+python -m pip install -e ".[dev]"
+python -m ruff check .
+python -m ruff format --check .
+python -m mypy
+python -m pytest
 ```
 
-### 5. Run Spark Consumer (Terminal 2)
+Spark connector dependencies are resolved from `docker/spark/pom.xml`, locked by filename, byte-size, and SHA-256 in `docker/spark/jars.lock.json`, then verified during the Spark image build.
+
+Useful make targets mirror the same commands:
 
 ```bash
-docker-compose exec -e PYTHONPATH=/opt/spark/work-dir spark-master \
-  /opt/spark/bin/spark-submit \
-  --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,com.datastax.spark:spark-cassandra-connector_2.12:3.4.1 \
-  /opt/spark/work-dir/src/consumer/main.py \
-  --kafka-servers kafka:9092 \
-  --cassandra-host cassandra \
-  --starting-offsets earliest \
-  --enable-console
+make install-dev
+make check
+make demo-showcase RUN_ID=run-local-showcase
+make cleanup RUN_ID=run-local-showcase
 ```
 
-## 📊 Access Dashboards
+## Documentation
 
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| **Grafana** | http://localhost:3000 | admin / admin |
-| **Spark UI** | http://localhost:8080 | - |
-| **Kafka UI** | http://localhost:8090 | - |
+- [Measured release status](docs/RELEASE_STATUS.md): verified results and remaining release work.
+- [Architecture](docs/ARCHITECTURE.md): component boundaries, storage model, state machine, and guarantees.
+- [Testing and verification](docs/TESTING.md): fast checks, Docker recovery tests, artifacts, and troubleshooting.
+- [CV and interview notes](docs/CV_NOTES.md): honest résumé bullets and technical talking points.
+- [Implementation design](docs/designs/market-data-reliability-lab.md): the detailed reviewed build plan.
+- [Visual system](DESIGN.md): dashboard and evidence-report design rules.
 
-## 📁 Project Structure
+## Project layout
 
-```
-depj2/
-├── src/
-│   ├── producer/          # Finnhub → Kafka producer
-│   │   ├── main.py
-│   │   ├── pipeline.py
-│   │   ├── finnhub_client.py
-│   │   └── config.py
-│   ├── consumer/          # Spark streaming processor
-│   │   ├── main.py
-│   │   ├── spark_processor.py
-│   │   ├── transformations.py
-│   │   └── sinks.py
-│   └── storage/           # Cassandra utilities
-├── grafana/
-│   ├── dashboards/        # Pre-configured dashboards
-│   └── provisioning/      # Auto-provisioned datasources
-├── schemas/               # Cassandra CQL schemas
-├── docker-compose.yml
-└── .env
+```text
+src/market_pipeline/       application code and independent verifier
+scripts/demo.py            one-command host orchestrator
+fixtures/                  deterministic scenario manifests
+schemas/                   Avro, artifact JSON Schema, and Cassandra CQL
+docker/                    pinned runtime images and Spark JAR lock
+grafana/                   provisioned datasource and run-scoped dashboard
+tests/                     unit, contract, and visual-regression checks
+docs/                      architecture, testing, and portfolio notes
+compose.yaml               isolated per-run infrastructure
 ```
 
-## ⚙️ Configuration
+## CV-ready summary
 
-### Environment Variables
+> Built a deterministic Kafka–Spark Structured Streaming–Cassandra reliability lab that injects a real `SIGKILL`, resumes from the same checkpoint, reconciles 12 correctness invariants across 1,236-event and 12,763-event fixtures, and publishes run-scoped Grafana plus immutable HTML evidence.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `FINNHUB_API_KEY` | Finnhub API key | Required |
-| `KAFKA_BOOTSTRAP_SERVERS` | Kafka broker address | localhost:9092 |
-| `CASSANDRA_HOSTS` | Cassandra contact point | localhost |
-| `SPARK_MASTER` | Spark master URL | spark://spark-master:7077 |
+Use the measured run size you personally execute and can explain. More examples and interview prompts are in [CV and interview notes](docs/CV_NOTES.md).
 
-### Tracked Symbols
+## Boundaries
 
-Default: `AAPL, GOOGL, MSFT, AMZN, META, TSLA, NVDA, JPM, V, WMT`
-
-Customize via `--symbols` flag:
-```bash
-python -m src.producer.main --symbols AAPL,TSLA,NVDA
-```
-
-## 🔧 Troubleshooting
-
-### No data in Grafana?
-
-1. Check if Kafka is running: `docker-compose ps kafka`
-2. Verify producer is connected to Finnhub WebSocket
-3. US market hours: Mon-Fri 9:30 PM - 4:00 AM (GMT+7)
-
-### Spark job not appearing?
-
-Ensure source code is mounted:
-```bash
-docker-compose exec spark-master ls /opt/spark/work-dir/src/
-```
-
-### Cassandra connection issues?
-
-Test connectivity:
-```bash
-docker-compose exec cassandra cqlsh -e "DESCRIBE KEYSPACES;"
-```
-
-## 📈 Sample Queries
-
-```sql
--- Recent trades
-SELECT * FROM market_data.trades_silver LIMIT 10;
-
--- OHLCV aggregations
-SELECT symbol, window_start, open, high, low, close, volume 
-FROM market_data.trades_gold_5m 
-WHERE symbol = 'AAPL' LIMIT 5;
-```
-
-## 📄 License
-
-MIT License - See [LICENSE](LICENSE) for details.
-
----
-
-Built with ❤️ for real-time financial data processing
+- The lab runs one Kafka broker, one Spark worker, and one Cassandra node; it demonstrates application recovery, not infrastructure high availability.
+- Gold aggregation is intentionally bounded after stream catch-up. This makes the expected result deterministic and independently comparable.
+- Sampled field equality complements exhaustive identity/coordinate checks; it is not exhaustive value equality for every Silver row.
+- The repository does not currently declare an open-source license.

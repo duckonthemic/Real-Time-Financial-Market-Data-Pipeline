@@ -5,9 +5,8 @@ datasources:
     type: hadesarchitect-cassandra-datasource
     uid: cassandra
     access: proxy
+    url: cassandra:9042
     jsonData:
-      host: cassandra
-      port: 9042
       keyspace: market_data
       user: cassandra
       consistency: ONE

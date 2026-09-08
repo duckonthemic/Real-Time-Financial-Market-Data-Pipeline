@@ -1,0 +1,276 @@
+name: ${COMPOSE_PROJECT_NAME:?COMPOSE_PROJECT_NAME is required}
+
+x-runtime: &runtime
+  networks: [pipeline]
+  group_add: ["${ARTIFACT_GID:-0}"]
+  restart: "no"
+
+services:
+  kafka:
+    <<: *runtime
+    image: ${KAFKA_IMAGE:?KAFKA_IMAGE is required}
+    environment:
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_HEAP_OPTS: -Xms512m -Xmx512m
+    cpus: ${KAFKA_CPUS:?KAFKA_CPUS is required}
+    mem_limit: ${KAFKA_MEMORY:?KAFKA_MEMORY is required}
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:9092 --list >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  schema-registry:
+    <<: *runtime
+    image: ${SCHEMA_REGISTRY_IMAGE:?SCHEMA_REGISTRY_IMAGE is required}
+    depends_on:
+      kafka: {condition: service_healthy}
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+      SCHEMA_REGISTRY_HEAP_OPTS: -Xms256m -Xmx256m
+    cpus: ${SCHEMA_REGISTRY_CPUS:?SCHEMA_REGISTRY_CPUS is required}
+    mem_limit: ${SCHEMA_REGISTRY_MEMORY:?SCHEMA_REGISTRY_MEMORY is required}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/subjects >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  cassandra:
+    <<: *runtime
+    image: ${CASSANDRA_IMAGE:?CASSANDRA_IMAGE is required}
+    environment:
+      CASSANDRA_CLUSTER_NAME: MarketDataReliabilityLab
+      CASSANDRA_DC: datacenter1
+      CASSANDRA_RACK: rack1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+      CASSANDRA_NUM_TOKENS: 16
+      MAX_HEAP_SIZE: 1024M
+      HEAP_NEWSIZE: 256M
+    cpus: ${CASSANDRA_CPUS:?CASSANDRA_CPUS is required}
+    mem_limit: ${CASSANDRA_MEMORY:?CASSANDRA_MEMORY is required}
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'SELECT release_version FROM system.local' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 8s
+      retries: 40
+      start_period: 40s
+
+  spark-master:
+    <<: *runtime
+    networks:
+      pipeline:
+        aliases: [spark-rpc]
+      observer: {}
+    image: market-spark-recovery:local
+    build:
+      context: .
+      dockerfile: docker/spark/Dockerfile
+      args:
+        SPARK_BASE_IMAGE: ${SPARK_BASE_IMAGE:?SPARK_BASE_IMAGE is required}
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master", "--host", "spark-rpc"]
+    cpus: ${SPARK_MASTER_CPUS:?SPARK_MASTER_CPUS is required}
+    mem_limit: ${SPARK_MASTER_MEMORY:?SPARK_MASTER_MEMORY is required}
+    ports:
+      - "127.0.0.1:${SPARK_UI_HOST_PORT:?SPARK_UI_HOST_PORT is required}:8080"
+    healthcheck:
+      # This alias exists only on pipeline, matching the explicit RPC bind host.
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/spark-rpc/7077'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  spark-worker:
+    <<: *runtime
+    image: market-spark-recovery:local
+    depends_on:
+      spark-master: {condition: service_healthy}
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-rpc:7077"]
+    environment:
+      SPARK_WORKER_CORES: 1
+      SPARK_WORKER_MEMORY: 1g
+    cpus: ${SPARK_WORKER_CPUS:?SPARK_WORKER_CPUS is required}
+    mem_limit: ${SPARK_WORKER_MEMORY_LIMIT:?SPARK_WORKER_MEMORY_LIMIT is required}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/spark-worker/8081'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  provision:
+    <<: *runtime
+    profiles: ["scenario"]
+    image: market-pipeline-runtime:local
+    build:
+      context: .
+      dockerfile: docker/app/Dockerfile
+    depends_on:
+      kafka: {condition: service_healthy}
+      schema-registry: {condition: service_healthy}
+      cassandra: {condition: service_healthy}
+    command: ["python", "-m", "market_pipeline.ops.provision"]
+    environment: &app_environment
+      RUN_ID: ${RUN_ID:?RUN_ID is required}
+      SCHEMA_ID: ${SCHEMA_ID:?SCHEMA_ID is required}
+      INPUT_TOPIC: ${INPUT_TOPIC:?INPUT_TOPIC is required}
+      DLQ_TOPIC: ${DLQ_TOPIC:?DLQ_TOPIC is required}
+      INPUT_PARTITIONS: ${INPUT_PARTITIONS:?INPUT_PARTITIONS is required}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CASSANDRA_HOST: cassandra
+      CASSANDRA_KEYSPACE: market_data
+      ARTIFACT_PATH: ${ARTIFACT_PATH:?ARTIFACT_PATH is required}
+      CHECKPOINT_PATH: /${CHECKPOINT_PATH:?CHECKPOINT_PATH is required}
+      SPARK_TRIGGER_SECONDS: ${SPARK_TRIGGER_SECONDS:?SPARK_TRIGGER_SECONDS is required}
+      SPARK_MAX_OFFSETS: ${SPARK_MAX_OFFSETS:?SPARK_MAX_OFFSETS is required}
+      STANDARD_MANIFEST: ${STANDARD_MANIFEST:?STANDARD_MANIFEST is required}
+      START_OFFSETS_JSON: ${START_OFFSETS_JSON:?START_OFFSETS_JSON is required}
+      SCENARIO_NAME: ${SCENARIO_NAME:?SCENARIO_NAME is required}
+      SCENARIO_MANIFEST: ${SCENARIO_MANIFEST:?SCENARIO_MANIFEST is required}
+      PRODUCER_RATE: ${PRODUCER_RATE:?PRODUCER_RATE is required}
+    volumes:
+      - ./artifacts:/artifacts
+
+  spark-recovery:
+    <<: *runtime
+    profiles: ["scenario"]
+    image: market-spark-recovery:local
+    depends_on:
+      spark-master: {condition: service_healthy}
+      spark-worker: {condition: service_healthy}
+      cassandra: {condition: service_healthy}
+      schema-registry: {condition: service_healthy}
+    command:
+      - /opt/spark/bin/spark-submit
+      - --master
+      - spark://spark-rpc:7077
+      - --deploy-mode
+      - client
+      - --driver-memory
+      - 768m
+      - --name
+      - recovery_pipeline
+      - /opt/market-pipeline/src/market_pipeline/streaming/main.py
+    environment: *app_environment
+    cpus: ${SPARK_RECOVERY_CPUS:?SPARK_RECOVERY_CPUS is required}
+    mem_limit: ${SPARK_RECOVERY_MEMORY:?SPARK_RECOVERY_MEMORY is required}
+    volumes:
+      - ./artifacts:/artifacts
+      - spark_checkpoints:/checkpoints
+
+  producer:
+    <<: *runtime
+    profiles: ["scenario"]
+    image: market-pipeline-runtime:local
+    depends_on:
+      kafka: {condition: service_healthy}
+      schema-registry: {condition: service_healthy}
+    command: ["python", "-m", "market_pipeline.producer.main"]
+    environment: *app_environment
+    volumes:
+      - ./artifacts:/artifacts
+
+  verifier:
+    <<: *runtime
+    profiles: ["scenario"]
+    image: market-pipeline-runtime:local
+    depends_on:
+      kafka: {condition: service_healthy}
+      cassandra: {condition: service_healthy}
+    command: ["python", "-m", "market_pipeline.verification.main"]
+    environment: *app_environment
+    volumes:
+      - ./artifacts:/artifacts
+
+  gold-finalizer:
+    <<: *runtime
+    profiles: ["scenario"]
+    image: market-pipeline-runtime:local
+    depends_on:
+      cassandra: {condition: service_healthy}
+    command: ["python", "-m", "market_pipeline.analytics.main"]
+    environment: *app_environment
+    volumes:
+      - ./artifacts:/artifacts
+
+  dashboard-smoke:
+    <<: *runtime
+    profiles: ["dashboard"]
+    image: market-pipeline-runtime:local
+    depends_on:
+      grafana: {condition: service_healthy}
+    command: ["python", "-m", "market_pipeline.ops.dashboard_smoke"]
+    environment:
+      <<: *app_environment
+      GRAFANA_URL: http://grafana:3000
+      GRAFANA_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+      DASHBOARD_JSON: grafana/dashboards/market-data-main.json
+    volumes:
+      - ./artifacts:/artifacts
+
+  grafana:
+    <<: *runtime
+    profiles: ["dashboard"]
+    networks: [pipeline, observer]
+    image: market-grafana:local
+    build:
+      context: .
+      dockerfile: docker/grafana/Dockerfile
+      args:
+        GRAFANA_IMAGE: ${GRAFANA_IMAGE:?GRAFANA_IMAGE is required}
+    depends_on:
+      cassandra: {condition: service_healthy}
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_USERS_DEFAULT_THEME: light
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SERVER_DOMAIN: localhost
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: hadesarchitect-cassandra-datasource
+    cpus: ${GRAFANA_CPUS:?GRAFANA_CPUS is required}
+    mem_limit: ${GRAFANA_MEMORY:?GRAFANA_MEMORY is required}
+    ports:
+      - "127.0.0.1:${GRAFANA_HOST_PORT:?GRAFANA_HOST_PORT is required}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/health >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+networks:
+  pipeline:
+    internal: true
+  observer:
+
+volumes:
+  kafka_data:
+  cassandra_data:
+  spark_checkpoints:
+  grafana_data:

@@ -1,0 +1,100 @@
+[project]
+name = "market-data-reliability-lab"
+artifact_root = "artifacts"
+checkpoint_root = "checkpoints"
+compose_file = "compose.yaml"
+schema_subject = "market.trades.v1-value"
+schema_path = "schemas/trade_event_v1.avsc"
+
+[images]
+kafka = "confluentinc/cp-kafka:7.7.2"
+schema_registry = "confluentinc/cp-schema-registry:7.7.2"
+spark = "apache/spark:3.5.5"
+cassandra = "cassandra:4.1.7"
+grafana = "grafana/grafana:11.4.0"
+grafana_plugin = "hadesarchitect-cassandra-datasource 3.3.0"
+
+[topics.input]
+name = "market.trades.v1"
+partitions = 3
+replication_factor = 1
+retention_ms = 86400000
+
+[topics.dlq]
+name = "market.trades.dlq.v1"
+partitions = 3
+replication_factor = 1
+retention_ms = 604800000
+
+[spark]
+query_name = "recovery_pipeline"
+trigger_seconds = 5
+max_offsets_per_trigger = 1000
+shuffle_partitions = 3
+driver_memory = "768m"
+worker_memory = "1g"
+
+[scenario.standard]
+manifest = "fixtures/standard/manifest.json"
+producer_rate_per_second = 50
+kill_after_processed = 3000
+kill_publish_min = 3500
+kill_publish_max = 7500
+failure_dwell_seconds = 15
+minimum_lag_rise = 500
+
+[scenario.recovery-showcase]
+manifest = "fixtures/recovery-showcase/manifest.json"
+producer_rate_per_second = 25
+kill_after_processed = 500
+kill_publish_min = 650
+kill_publish_max = 1000
+failure_dwell_seconds = 8
+minimum_lag_rise = 150
+
+[timeouts]
+infrastructure_seconds = 480
+scenario_seconds = 900
+poll_seconds = 2
+
+[ports]
+grafana = 3000
+spark_ui = 8080
+
+[resources]
+required_cpus = 4
+required_memory_gib = 8
+required_disk_gib = 10
+
+[resources.kafka]
+cpus = 0.50
+memory = "1g"
+
+[resources.schema_registry]
+cpus = 0.25
+memory = "512m"
+
+[resources.cassandra]
+cpus = 1.00
+memory = "2g"
+
+[resources.spark_master]
+cpus = 0.25
+memory = "512m"
+
+[resources.spark_worker]
+cpus = 1.00
+memory = "1536m"
+
+[resources.spark_recovery]
+cpus = 0.75
+memory = "1g"
+
+[resources.grafana]
+cpus = 0.25
+memory = "512m"
+
+[verification]
+price_absolute_tolerance = 0.000001
+sample_size = 256
+raw_preview_max_bytes = 64
