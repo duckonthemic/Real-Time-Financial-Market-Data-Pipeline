@@ -28,6 +28,8 @@ All notable changes to this project are documented in this file.
   cannot advertise the observer address to workers or drivers.
 - Classified corrupt permissive-mode Avro records as `BAD_WIRE`, including
   decoded structs whose required fields are all null.
+- Normalized Avro schema mappings at the typed dependency boundary so CI and
+  local type checks agree when `fastavro` is installed.
 - Kept Grafana credentials out of published JSON evidence and made cleanup,
   deadlines, dashboard queries, and Linux artifact permissions verifiable.
 

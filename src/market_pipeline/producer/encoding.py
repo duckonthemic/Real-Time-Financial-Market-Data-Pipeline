@@ -21,7 +21,9 @@ def encode_event(event: Mapping[str, Any], schema: Mapping[str, Any], schema_id:
     from fastavro import schemaless_writer
 
     buffer = io.BytesIO()
-    schemaless_writer(buffer, schema, dict(event))
+    # fastavro's typed boundary accepts a concrete schema container. Keep the
+    # public helper flexible while normalizing both inputs at the dependency edge.
+    schemaless_writer(buffer, dict(schema), dict(event))
     return wrap_confluent_payload(schema_id, buffer.getvalue())
 
 
