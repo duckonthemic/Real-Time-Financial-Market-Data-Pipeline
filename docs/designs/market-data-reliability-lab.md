@@ -30,7 +30,7 @@ The “whoa” moment is a correctness proof rather than another moving stock ch
 5. Reconcile Kafka ranges, Bronze coordinates, DLQ reasons, and unique Silver identities.
 6. End on a dashboard verdict: `PASS — recovery contract satisfied`.
 
-The pre-review rough dashboard baseline is stored as gstack user data under `~/.gstack/projects/hoang/designs/market-data-reliability-dashboard-20260907/`. It is not an approved final mockup: the evidence-first hierarchy, state matrix, responsive ownership, and accessibility contract in this document supersede its stale labels/layout. A final implementation screenshot is approved only after `/design-consultation` creates `DESIGN.md` and visual QA passes.
+The pre-review rough dashboard baseline is stored as gstack user data under `~/.gstack/projects/<project-slug>/designs/market-data-reliability-dashboard-20260907/`. It is not an approved final mockup: the evidence-first hierarchy, state matrix, responsive ownership, and accessibility contract in this document supersede its stale labels/layout. A final implementation screenshot is approved only after `/design-consultation` creates `DESIGN.md` and visual QA passes.
 
 ## Constraints
 
@@ -697,7 +697,7 @@ After the implementation produces real standard and showcase passes, record one 
 | `schemas/cassandra/keyspace.cql` | Cassandra bootstrap location | Replace mismatched tables, RF=2 assumptions, indexes, and query patterns with access-path-first DDL |
 | `docker-compose.yml` | Basic service inventory | Rewrite for KRaft, one worker, a dedicated driver, private networking, health gates, and pinned custom images |
 | `grafana/provisioning/` | Provisioning directory layout | Retain the layout, replace runtime plugin installation, datasource credentials, and invalid CQL |
-| Rough evidence wireframe | Verdict-first intent and basic timeline/table vocabulary | Archived under `~/.gstack/projects/hoang/designs/market-data-reliability-dashboard-20260907/`; hierarchy and copy are superseded by this review |
+| Rough evidence wireframe | Verdict-first intent and basic timeline/table vocabulary | Archived under `~/.gstack/projects/<project-slug>/designs/market-data-reliability-dashboard-20260907/`; hierarchy and copy are superseded by this review |
 | `DESIGN.md` | No existing design system | Must be created by a scoped `/design-consultation` before UI implementation |
 | `pytest.ini` and `tests/` | Pytest is already established | Keep pytest; replace prototype tests with unit, contract, container integration, and recovery scenarios |
 | `docs/research/` and `docs/RUNBOOK.md` | Some useful domain notes | Keep only reviewed facts; update commands and guarantees to match the implemented pipeline |
@@ -790,7 +790,7 @@ LLM EVALS: none; this project contains no prompt or model behavior
 
 Legend: `***` behavior plus edge/error paths; `**` happy path; `E2E` requires real services.
 
-The QA handoff artifact is `~/.gstack/projects/hoang/hoang-main-eng-review-test-plan-20260907-113712.md`.
+The QA handoff artifact is stored under the matching gstack project directory as an engineering-review test plan.
 
 ## Failure modes
 
