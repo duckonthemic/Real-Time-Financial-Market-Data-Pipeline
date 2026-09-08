@@ -150,12 +150,6 @@ docs/                      architecture, testing, and portfolio notes
 compose.yaml               isolated per-run infrastructure
 ```
 
-## CV-ready summary
-
-> Built a deterministic Kafka–Spark Structured Streaming–Cassandra reliability lab that injects a real `SIGKILL`, resumes from the same checkpoint, reconciles 12 correctness invariants across 1,236-event and 12,763-event fixtures, and publishes run-scoped Grafana plus immutable HTML evidence.
-
-Use the measured run size you personally execute and can explain. More examples and interview prompts are in [CV and interview notes](docs/CV_NOTES.md).
-
 ## Boundaries
 
 - The lab runs one Kafka broker, one Spark worker, and one Cassandra node; it demonstrates application recovery, not infrastructure high availability.
