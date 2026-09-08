@@ -2,19 +2,30 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping, Protocol
+from typing import Any, Protocol
 
 
 class BatchFrame(Protocol):
-    def persist(self) -> "BatchFrame": ...
+    def persist(self) -> BatchFrame: ...
     def unpersist(self) -> None: ...
 
 
 class LedgerWriter(Protocol):
     def status(self, run_id: str, query_name: str, batch_id: int) -> str | None: ...
-    def started(self, run_id: str, query_name: str, batch_id: int, bounds: Mapping[int, tuple[int, int]]) -> None: ...
-    def completed(self, run_id: str, query_name: str, batch_id: int, counts: Mapping[str, int], bounds: Mapping[int, tuple[int, int]]) -> None: ...
+    def started(
+        self, run_id: str, query_name: str, batch_id: int, bounds: Mapping[int, tuple[int, int]]
+    ) -> None: ...
+    def completed(
+        self,
+        run_id: str,
+        query_name: str,
+        batch_id: int,
+        counts: Mapping[str, int],
+        bounds: Mapping[int, tuple[int, int]],
+    ) -> None: ...
     def failed(self, run_id: str, query_name: str, batch_id: int, error: str) -> None: ...
 
 
@@ -43,11 +54,16 @@ class RecoveryBatchDependencies:
     dlq_publisher: ProjectionWriter | None = None
 
 
-def process_recovery_batch(raw_batch: BatchFrame, batch_id: int, dependencies: RecoveryBatchDependencies) -> None:
+def process_recovery_batch(
+    raw_batch: BatchFrame, batch_id: int, dependencies: RecoveryBatchDependencies
+) -> None:
     """Write deterministic projections, completing the ledger last."""
     persisted = raw_batch.persist()
     try:
-        if dependencies.ledger.status(dependencies.run_id, dependencies.query_name, batch_id) == "COMPLETED":
+        if (
+            dependencies.ledger.status(dependencies.run_id, dependencies.query_name, batch_id)
+            == "COMPLETED"
+        ):
             return
         bounds = dependencies.derive_bounds(persisted)
         dependencies.ledger.started(dependencies.run_id, dependencies.query_name, batch_id, bounds)
@@ -65,15 +81,13 @@ def process_recovery_batch(raw_batch: BatchFrame, batch_id: int, dependencies: R
             bounds,
         )
     except Exception as exc:
-        try:
+        with suppress(Exception):
             dependencies.ledger.failed(
                 dependencies.run_id,
                 dependencies.query_name,
                 batch_id,
                 str(exc)[:1000],
             )
-        except Exception:
-            pass
         raise
     finally:
         persisted.unpersist()

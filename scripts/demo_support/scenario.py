@@ -3,26 +3,45 @@
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import shutil
 import socket
 import sys
 import time
 import webbrowser
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, TypeVar
 
-from .artifacts import DemoLock, append_jsonl, artifact, atomic_write_json, read_artifact, safe_run_directory, utc_now, write_primary_failure
+from .artifacts import (
+    DemoLock,
+    append_jsonl,
+    artifact,
+    atomic_write_json,
+    read_artifact,
+    safe_run_directory,
+    utc_now,
+    write_primary_failure,
+)
 from .compose import CommandRunner, Compose, SubprocessRunner
 from .config import DemoConfig, compose_environment, render_compose_env, validate_run_id
-from .errors import ConfigFailure, DeadlineFailure, DemoFailure, InfrastructureFailure, InvariantFailure, UNEXPECTED
-
+from .errors import (
+    UNEXPECTED,
+    ConfigFailure,
+    DeadlineFailure,
+    DemoFailure,
+    InfrastructureFailure,
+    InvariantFailure,
+)
 
 SOURCE_ROOT = Path(__file__).resolve().parents[2] / "src"
 if str(SOURCE_ROOT) not in sys.path:
     sys.path.insert(0, str(SOURCE_ROOT))
+
+T = TypeVar("T")
 
 
 TERMINAL_STATES = {"PASSED", "FAILED", "TIMED_OUT"}
@@ -40,7 +59,9 @@ TRANSITIONS = {
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
 
 def generated_run_id() -> str:
@@ -86,13 +107,20 @@ class RecoveryScenario:
         self.open_dashboard = open_dashboard
         self.run_directory = safe_run_directory(config.artifact_root, self.run_id)
         self.env_file = self.run_directory / "compose.env"
-        self.compose = Compose(config.root, config.compose_file, self.env_file, self.runner)
+        self.compose = Compose(
+            config.root,
+            config.compose_file,
+            self.env_file,
+            self.runner,
+            default_timeout=float(config.values["timeouts"]["infrastructure_seconds"]),
+        )
         self.run_file = self.run_directory / "run.json"
         self.timeline_file = self.run_directory / "state-transitions.jsonl"
         self.metrics_file = self.run_directory / "metrics.jsonl"
         self._sequence = 0
         self._state: str | None = None
         self._run_values: dict[str, Any] = {}
+        self._grafana_password: str | None = None
 
     @property
     def dashboard_url(self) -> str:
@@ -140,32 +168,34 @@ class RecoveryScenario:
             return None
         return read_artifact(path, run_id=self.run_id)
 
-    def _wait(self, description: str, predicate: Callable[[], Any], timeout_seconds: float) -> Any:
+    def _wait(
+        self, description: str, predicate: Callable[[], T | None], timeout_seconds: float
+    ) -> T:
         deadline = self.monotonic() + timeout_seconds
         while self.monotonic() < deadline:
             value = predicate()
             if value:
                 return value
             self.sleeper(float(self.config.values["timeouts"]["poll_seconds"]))
-        raise DeadlineFailure(f"Timed out waiting for {description}", phase=self._state or "unknown")
+        raise DeadlineFailure(
+            f"Timed out waiting for {description}", phase=self._state or "unknown"
+        )
 
-    def _base_environment(self, schema_id: int = 0, start_offsets_json: str = "{}") -> dict[str, str]:
-        password = self._run_values.get("grafana_password")
-        if not isinstance(password, str):
-            password = secrets.token_urlsafe(24)
-            self._run_values["grafana_password"] = password
+    def _base_environment(
+        self, schema_id: int = 0, start_offsets_json: str = "{}"
+    ) -> dict[str, str]:
+        if self._grafana_password is None:
+            self._grafana_password = secrets.token_urlsafe(24)
         return compose_environment(
             self.config,
             self.run_id,
             schema_id,
-            password,
+            self._grafana_password,
             scenario_name=self.scenario_name,
             start_offsets_json=start_offsets_json,
         )
 
     def preflight(self) -> None:
-        if sys.version_info < (3, 11):
-            raise ConfigFailure("Python 3.11 or newer is required", remediation="Install Python 3.11+ and rerun the command.")
         for args, message in (
             (("docker", "--version"), "Docker CLI is not installed"),
             (("docker", "compose", "version"), "Docker Compose v2 is not installed"),
@@ -173,11 +203,15 @@ class RecoveryScenario:
         ):
             result = self.runner.run(args, cwd=self.config.root, timeout=20)
             if result.returncode != 0:
-                raise ConfigFailure(message, remediation="Start Docker Desktop and rerun the command.")
+                raise ConfigFailure(
+                    message, remediation="Start Docker Desktop and rerun the command."
+                )
         free_gib = shutil.disk_usage(self.config.root).free / 1024**3
         required_disk = float(self.config.values["resources"]["required_disk_gib"])
         if free_gib < required_disk:
-            raise ConfigFailure(f"At least {required_disk:g} GiB free disk is required; found {free_gib:.1f} GiB")
+            raise ConfigFailure(
+                f"At least {required_disk:g} GiB free disk is required; found {free_gib:.1f} GiB"
+            )
         for name, port in self.config.values["ports"].items():
             if name == "grafana" and not self.dashboard:
                 continue
@@ -225,23 +259,43 @@ class RecoveryScenario:
             delivered = int(producer.get("records", 0))
             processed = int(streaming.get("records", 0))
             if producer.get("state") == "FAILED":
-                raise InfrastructureFailure("Producer failed before the recovery gate", "producing", "Inspect producer-progress.json.")
+                raise InfrastructureFailure(
+                    "Producer failed before the recovery gate",
+                    "producing",
+                    "Inspect producer-progress.json.",
+                )
             if producer.get("state") == "COMPLETED" and processed < minimum_processed:
-                raise InfrastructureFailure("Producer completed before the failure gate", "producing", "Use the configured rate and reduced fixture together.")
+                raise InfrastructureFailure(
+                    "Producer completed before the failure gate",
+                    "producing",
+                    "Use the configured rate and reduced fixture together.",
+                )
             if delivered > maximum_published:
-                raise InfrastructureFailure("Producer passed the maximum safe kill gate", "producing", "Inspect Spark throughput before retrying.")
+                raise InfrastructureFailure(
+                    "Producer passed the maximum safe kill gate",
+                    "producing",
+                    "Inspect Spark throughput before retrying.",
+                )
             self._sample_lag()
             if delivered >= minimum_published and processed >= minimum_processed:
                 return producer, streaming
             return None
 
-        return self._wait("the deterministic failure gate", gate, float(self.config.values["timeouts"]["scenario_seconds"]))
+        return self._wait(
+            "the deterministic failure gate",
+            gate,
+            float(self.config.values["timeouts"]["scenario_seconds"]),
+        )
 
     def run(self) -> ScenarioResult:
         if self.run_directory.exists():
             raise ConfigFailure(f"run_id already exists and cannot be reused: {self.run_id}")
         with DemoLock(self.config.root / ".gstack" / "demo.lock", self.run_id):
             self.run_directory.mkdir(parents=True)
+            if os.name == "posix":
+                # Container writers join the host group; setgid keeps new evidence
+                # in that group without making the directory world-writable.
+                self.run_directory.chmod(0o2770)
             self._run_values = {
                 "scenario": self.scenario_name,
                 "dataset_id": "pending",
@@ -251,32 +305,58 @@ class RecoveryScenario:
             environment = self._base_environment()
             self._run_values["compose_env_sha256"] = render_compose_env(self.env_file, environment)
             try:
-                self._transition("CREATED", "harness", "run identity and immutable host configuration created")
+                self._transition(
+                    "CREATED", "harness", "run identity and immutable host configuration created"
+                )
                 self.preflight()
                 self.compose.build("provision", "spark-master")
-                self.compose.up("kafka", "schema-registry", "cassandra", "spark-master", "spark-worker")
+                self.compose.up(
+                    "kafka", "schema-registry", "cassandra", "spark-master", "spark-worker"
+                )
                 self._transition("INFRA_READY", "harness", "required services passed health checks")
                 self.compose.run("provision")
-                provision = read_artifact(self.run_directory / "provision.json", run_id=self.run_id, artifact_type="provision")
+                provision = read_artifact(
+                    self.run_directory / "provision.json",
+                    run_id=self.run_id,
+                    artifact_type="provision",
+                )
                 if provision.get("state") != "COMPLETED":
-                    raise InfrastructureFailure("Provisioning did not complete", "provision", "Inspect provision.json.")
-                manifest = json.loads((self.config.root / str(self.settings["manifest"])).read_text(encoding="utf-8"))
+                    raise InfrastructureFailure(
+                        "Provisioning did not complete", "provision", "Inspect provision.json."
+                    )
+                manifest = json.loads(
+                    (self.config.root / str(self.settings["manifest"])).read_text(encoding="utf-8")
+                )
                 self._run_values.update(
                     dataset_id=manifest["dataset_id"],
                     schema_id=int(provision["schema_id"]),
                     start_offsets_inclusive=provision["start_offsets_inclusive"],
                 )
-                environment = self._base_environment(int(provision["schema_id"]), str(provision["spark_starting_offsets"]))
-                self._run_values["compose_env_sha256"] = render_compose_env(self.env_file, environment)
-                self._transition("RUN_READY", "harness", "schema and run-scoped starting offsets provisioned")
+                environment = self._base_environment(
+                    int(provision["schema_id"]), str(provision["spark_starting_offsets"])
+                )
+                self._run_values["compose_env_sha256"] = render_compose_env(
+                    self.env_file, environment
+                )
+                self._transition(
+                    "RUN_READY", "harness", "schema and run-scoped starting offsets provisioned"
+                )
                 self.compose.up("spark-recovery")
                 self.compose.up("producer")
                 if self.dashboard:
                     self.compose.command("--profile", "dashboard", "up", "-d", "--build", "grafana")
-                self._transition("PRODUCING", "producer", "first acknowledged deliveries and recovery query are active")
+                self._transition(
+                    "PRODUCING",
+                    "producer",
+                    "first acknowledged deliveries and recovery query are active",
+                )
                 self._wait_for_kill_gate()
                 self.compose.kill("spark-recovery")
-                self._transition("FAILURE_INJECTED", "harness", "Spark driver stopped with SIGKILL while producer remained active")
+                self._transition(
+                    "FAILURE_INJECTED",
+                    "harness",
+                    "Spark driver stopped with SIGKILL while producer remained active",
+                )
                 baseline_lag = self._sample_lag()
                 dwell_deadline = self.monotonic() + float(self.settings["failure_dwell_seconds"])
                 peak_lag = baseline_lag
@@ -289,46 +369,82 @@ class RecoveryScenario:
                         phase="failure-injected",
                     )
                 self.compose.recreate("spark-recovery")
-                self._transition("RECOVERING", "harness", "Spark driver recreated with the same checkpoint volume")
+                self._transition(
+                    "RECOVERING",
+                    "harness",
+                    "Spark driver recreated with the same checkpoint volume",
+                )
 
                 def producer_complete() -> dict[str, Any] | None:
                     progress = self._progress("producer-progress.json")
                     if progress and progress.get("state") == "FAILED":
-                        raise InfrastructureFailure("Producer delivery accounting failed", "recovering", "Inspect producer-progress.json.")
+                        raise InfrastructureFailure(
+                            "Producer delivery accounting failed",
+                            "recovering",
+                            "Inspect producer-progress.json.",
+                        )
                     self._sample_lag()
                     return progress if progress and progress.get("state") == "COMPLETED" else None
 
-                produced = self._wait("producer delivery completion", producer_complete, float(self.config.values["timeouts"]["scenario_seconds"]))
+                produced = self._wait(
+                    "producer delivery completion",
+                    producer_complete,
+                    float(self.config.values["timeouts"]["scenario_seconds"]),
+                )
                 expected_total = int(produced["expected_records"])
 
                 def query_caught_up() -> dict[str, Any] | None:
                     progress = self._progress("streaming-progress.json")
                     if progress and progress.get("state") == "FAILED":
-                        raise InfrastructureFailure("Recovery query failed", "recovering", "Inspect streaming-progress.json and Spark logs.")
+                        raise InfrastructureFailure(
+                            "Recovery query failed",
+                            "recovering",
+                            "Inspect streaming-progress.json and Spark logs.",
+                        )
                     self._sample_lag()
-                    return progress if progress and int(progress.get("records", 0)) >= expected_total else None
+                    return (
+                        progress
+                        if progress and int(progress.get("records", 0)) >= expected_total
+                        else None
+                    )
 
-                self._wait("recovery query to reach the captured end frontier", query_caught_up, float(self.config.values["timeouts"]["scenario_seconds"]))
+                self._wait(
+                    "recovery query to reach the captured end frontier",
+                    query_caught_up,
+                    float(self.config.values["timeouts"]["scenario_seconds"]),
+                )
                 self.compose.run("gold-finalizer")
                 self._transition("VERIFYING", "harness", "producer flushed and the query caught up")
                 verification = self.compose.run("verifier", check=False)
-                report = read_artifact(self.run_directory / "run-report.json", run_id=self.run_id, artifact_type="run-report")
+                report = read_artifact(
+                    self.run_directory / "run-report.json",
+                    run_id=self.run_id,
+                    artifact_type="run-report",
+                )
                 if verification.returncode != 0 or report.get("data_contract_status") != "PASSED":
                     raise InvariantFailure("One or more independent invariants failed")
                 self._run_values["completed_at"] = utc_now()
                 self._run_values["data_contract_status"] = report["data_contract_status"]
                 self._run_values["portfolio_release_status"] = report["portfolio_release_status"]
-                self._transition("PASSED", "reconciler", "all named correctness and recovery invariants passed")
+                self._transition(
+                    "PASSED", "reconciler", "all named correctness and recovery invariants passed"
+                )
                 if self.dashboard:
-                    self.compose.command("--profile", "dashboard", "run", "--rm", "dashboard-smoke", check=False)
+                    self.compose.command(
+                        "--profile", "dashboard", "run", "--rm", "dashboard-smoke", check=False
+                    )
                     report = read_artifact(
                         self.run_directory / "run-report.json",
                         run_id=self.run_id,
                         artifact_type="run-report",
                     )
-                    self._run_values["portfolio_release_status"] = report["portfolio_release_status"]
+                    self._run_values["portfolio_release_status"] = report[
+                        "portfolio_release_status"
+                    ]
                     self._run_values["dashboard_url"] = self.dashboard_url
-                    atomic_write_json(self.run_file, artifact("run", self.run_id, **self._run_values))
+                    atomic_write_json(
+                        self.run_file, artifact("run", self.run_id, **self._run_values)
+                    )
                 from market_pipeline.verification.report import write_report
 
                 write_report(
@@ -339,7 +455,12 @@ class RecoveryScenario:
                 )
                 if self.open_dashboard and self.dashboard:
                     webbrowser.open(self.dashboard_url)
-                return ScenarioResult(self.run_id, "PASSED", self.run_directory / "report.html", self.dashboard_url)
+                return ScenarioResult(
+                    self.run_id,
+                    "PASSED",
+                    self.run_directory / "report.html",
+                    self.dashboard_url if self.dashboard else "",
+                )
             except DemoFailure as failure:
                 terminal = "TIMED_OUT" if failure.category == "TIMEOUT" else "FAILED"
                 if self._state not in TERMINAL_STATES:
@@ -372,20 +493,36 @@ class RecoveryScenario:
                         cleanup_errors=[],
                     ),
                 )
-                raise DemoFailure("UNEXPECTED", str(exc), self._state or "unknown", UNEXPECTED, "Inspect captured artifacts and service logs.") from exc
+                raise DemoFailure(
+                    "UNEXPECTED",
+                    str(exc),
+                    self._state or "unknown",
+                    UNEXPECTED,
+                    "Inspect captured artifacts and service logs.",
+                ) from exc
 
 
 def cleanup_run(config: DemoConfig, run_id: str, runner: CommandRunner | None = None) -> Path:
     directory = safe_run_directory(config.artifact_root, validate_run_id(run_id), must_exist=True)
     run = read_artifact(directory / "run.json", run_id=run_id, artifact_type="run")
     if (config.root / ".gstack" / "demo.lock").exists():
-        raise ConfigFailure("Cannot clean a run while the orchestrator lock is active", phase="cleanup")
+        raise ConfigFailure(
+            "Cannot clean a run while the orchestrator lock is active", phase="cleanup"
+        )
     expected_project = f"market-recovery-{run_id}"
     env_file = directory / "compose.env"
     env = env_file.read_text(encoding="utf-8")
     if f"COMPOSE_PROJECT_NAME={expected_project}\n" not in env.replace("\r\n", "\n"):
-        raise ConfigFailure("Run Compose ownership does not match the requested run", phase="cleanup")
-    Compose(config.root, config.compose_file, env_file, runner).down(volumes=True)
+        raise ConfigFailure(
+            "Run Compose ownership does not match the requested run", phase="cleanup"
+        )
+    Compose(
+        config.root,
+        config.compose_file,
+        env_file,
+        runner,
+        default_timeout=float(config.values["timeouts"]["infrastructure_seconds"]),
+    ).down(volumes=True)
     run["runtime_cleaned"] = True
     run["updated_at"] = utc_now()
     atomic_write_json(directory / "run.json", run)
@@ -396,9 +533,13 @@ def purge_evidence(config: DemoConfig, run_id: str) -> None:
     directory = safe_run_directory(config.artifact_root, validate_run_id(run_id), must_exist=True)
     run = read_artifact(directory / "run.json", run_id=run_id, artifact_type="run")
     if (config.root / ".gstack" / "demo.lock").exists():
-        raise ConfigFailure("Cannot purge evidence while the orchestrator lock is active", phase="cleanup")
+        raise ConfigFailure(
+            "Cannot purge evidence while the orchestrator lock is active", phase="cleanup"
+        )
     if not run.get("runtime_cleaned"):
-        raise ConfigFailure("Run runtime must be cleaned before evidence can be purged", phase="cleanup")
+        raise ConfigFailure(
+            "Run runtime must be cleaned before evidence can be purged", phase="cleanup"
+        )
     if directory.is_symlink() or directory.parent != config.artifact_root.resolve():
         raise ConfigFailure("Refusing to purge an unsafe evidence path", phase="cleanup")
     shutil.rmtree(directory)

@@ -4,7 +4,11 @@ from dataclasses import dataclass
 
 import pytest
 
-from market_pipeline.streaming.batch import BatchFrames, RecoveryBatchDependencies, process_recovery_batch
+from market_pipeline.streaming.batch import (
+    BatchFrames,
+    RecoveryBatchDependencies,
+    process_recovery_batch,
+)
 
 
 class FakeFrame:
@@ -59,7 +63,8 @@ def dependencies(events: list[str], *, status: str | None = None, failing: str |
         silver_writer=FakeWriter("silver", events, failing == "silver"),
         dlq_writer=FakeWriter("dlq", events, failing == "dlq"),
         derive_bounds=lambda frame: events.append("bounds") or {0: (10, 20)},
-        transform=lambda frame: events.append("transform") or BatchFrames("b", "s", "d", {"input": 10}),
+        transform=lambda frame: events.append("transform")
+        or BatchFrames("b", "s", "d", {"input": 10}),
     )
 
 
@@ -67,7 +72,16 @@ def test_projection_order_and_complete_last() -> None:
     events: list[str] = []
     frame = FakeFrame()
     process_recovery_batch(frame, 7, dependencies(events))
-    assert events == ["ledger.status", "bounds", "ledger.started", "transform", "bronze", "silver", "dlq", "ledger.completed"]
+    assert events == [
+        "ledger.status",
+        "bounds",
+        "ledger.started",
+        "transform",
+        "bronze",
+        "silver",
+        "dlq",
+        "ledger.completed",
+    ]
     assert frame.events == ["persist", "unpersist"]
 
 

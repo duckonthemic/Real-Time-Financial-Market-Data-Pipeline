@@ -7,5 +7,36 @@
     "org.apache.spark:spark-avro_2.12:3.5.5",
     "com.datastax.spark:spark-cassandra-connector_2.12:3.5.1"
   ],
-  "verification": "docker/spark/verify_jars.py emits the resolved closure and SHA-256 values from the built image"
+  "jars": [
+    {"file": "HdrHistogram-2.1.12.jar", "bytes": 173763, "sha256": "9b47fbae444feaac4b7e04f0ea294569e4bc282bc69d8c2ce2ac3f23577281e2"},
+    {"file": "commons-lang3-3.10.jar", "bytes": 523372, "sha256": "28968ae55fff465494083aeba856f8824c34902329882bf61e77246a91e25aa9"},
+    {"file": "commons-logging-1.1.3.jar", "bytes": 62050, "sha256": "70903f6fc82e9908c8da9f20443f61d90f0870a312642991fe8462a0b9391784"},
+    {"file": "commons-pool2-2.11.1.jar", "bytes": 145516, "sha256": "ea0505ee7515e58b1ac0e686e4d1a5d9f7d808e251a61bc371aa0595b9963f83"},
+    {"file": "config-1.4.1.jar", "bytes": 295197, "sha256": "4c0aa7e223c75c8840c41fc183d4cd3118140a1ee503e3e08ce66ed2794c948f"},
+    {"file": "hadoop-client-api-3.3.4.jar", "bytes": 19458635, "sha256": "e513d71b78086b5caaa439f4402b43e20df01446d56b66084ad419452878701c"},
+    {"file": "hadoop-client-runtime-3.3.4.jar", "bytes": 30085504, "sha256": "9377a68071137ae5f5c8cdc2ed20d6f904a1df4d06df26b47ed8872a1b0d8d47"},
+    {"file": "java-driver-core-shaded-4.18.1.jar", "bytes": 6393812, "sha256": "f3c759f28dd509274157bf1afe81b1f6f77f70b9ef0bf8caecbbcafc7aea0694"},
+    {"file": "java-driver-mapper-runtime-4.18.1.jar", "bytes": 65592, "sha256": "70b0ab6dbefd156a81477277ede40903e9220fb0a7b2511bd6c591b24d365fe0"},
+    {"file": "java-driver-query-builder-4.18.1.jar", "bytes": 284536, "sha256": "9583ae377d005a1230835a05df2cc2c3a4f227644a406d64b8bb1a7ea22dd61d"},
+    {"file": "java-driver-shaded-guava-25.1-jre-graal-sub-1.jar", "bytes": 2864187, "sha256": "8d1e57ab48ff4cc09b1a1f033218ad50f96cf92922f732cf333ec386c9e5c9ae"},
+    {"file": "jsr305-3.0.0.jar", "bytes": 33031, "sha256": "bec0b24dcb23f9670172724826584802b80ae6cbdaba03bdebdef9327b962f6a"},
+    {"file": "kafka-clients-3.4.1.jar", "bytes": 5050443, "sha256": "9d0a9058c8ede79db6e54ae378ed16fe8d1bead2894635a4aa6aa0b7981668c6"},
+    {"file": "lz4-java-1.8.0.jar", "bytes": 682804, "sha256": "d74a3334fb35195009b338a951f918203d6bbca3d1d359033dc33edd1cadc9ef"},
+    {"file": "metrics-core-4.1.18.jar", "bytes": 116057, "sha256": "a735eb5b62f425181efa53aefa5b7edad2b0e48cd0fa91105aa0ec1a45169e0b"},
+    {"file": "native-protocol-1.5.1.jar", "bytes": 320153, "sha256": "955120805ddadd0771b36124679e337a20959c5639bc5de82bb8bce96b10441e"},
+    {"file": "paranamer-2.8.jar", "bytes": 34654, "sha256": "688cb118a6021d819138e855208c956031688be4b47a24bb615becc63acedf07"},
+    {"file": "reactive-streams-1.0.3.jar", "bytes": 11369, "sha256": "1dee0481072d19c929b623e155e14d2f6085dc011529a0a0dbefc84cf571d865"},
+    {"file": "scala-collection-compat_2.12-2.11.0.jar", "bytes": 293940, "sha256": "7bf170604a148a342c7d1b1c7d181dd41e9c60b7b459dd49b2bcf12be69ea675"},
+    {"file": "scala-library-2.12.19.jar", "bytes": 5435881, "sha256": "81e32f8e31236ef84c21287f1fbaa916fc6525b2e63220d4a0f2396e91871d50"},
+    {"file": "scala-reflect-2.12.19.jar", "bytes": 3670569, "sha256": "ff6eaa5548779d61d35b98cb25e931951c5a9f1abc48741e9df95324ee2ae66c"},
+    {"file": "slf4j-api-1.7.36.jar", "bytes": 41125, "sha256": "d3ef575e3e4979678dc01bf1dcce51021493b4d11fb7f1be8ad982877c16a1c0"},
+    {"file": "snappy-java-1.1.8.4.jar", "bytes": 1970939, "sha256": "24c4d1fc1e89e078331ab8f401a99cad68599bde4a2e4516042cb548c51b1c3e"},
+    {"file": "spark-avro_2.12-3.5.5.jar", "bytes": 207232, "sha256": "16815c7ae6e68eb8f097c3987737689a20fb9cd8718f1c6cce72b76008a94d06"},
+    {"file": "spark-cassandra-connector-driver_2.12-3.5.1.jar", "bytes": 1082054, "sha256": "0535ea8bfb5ba3285259f54c5b840dd0205c79f491112734ffab6f0be9e911c7"},
+    {"file": "spark-cassandra-connector_2.12-3.5.1.jar", "bytes": 1635893, "sha256": "5c5b53813d8fc1e69115758fb4a7ccb24cae335778f9e6902f49999d7f985c08"},
+    {"file": "spark-sql-kafka-0-10_2.12-3.5.5.jar", "bytes": 432340, "sha256": "26e2ada52ed32d9310960749da074f3bfa9c20354c282303d1bd87b78856814c"},
+    {"file": "spark-tags_2.12-3.5.5.jar", "bytes": 15161, "sha256": "0ce1221c6a7bd62ceeeea97f4e4adf522b3cf05277db9be954015d2c1df4e785"},
+    {"file": "spark-token-provider-kafka-0-10_2.12-3.5.5.jar", "bytes": 56810, "sha256": "475f1ba3d06afef4ab0ddb9e27f0490c07c1f5870212c7f178e7dfbbc433ec1d"},
+    {"file": "xz-1.9.jar", "bytes": 116013, "sha256": "211b306cfc44f8f96df3a0a3ddaf75ba8c5289eed77d60d72f889bb855f535e5"}
+  ]
 }

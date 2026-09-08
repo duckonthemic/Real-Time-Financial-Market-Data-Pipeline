@@ -54,6 +54,7 @@ src = ["src", "scripts", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -61,3 +62,7 @@ strict = true
 packages = ["market_pipeline", "demo_support"]
 mypy_path = ["src", "scripts"]
 warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["cassandra.*", "confluent_kafka.*", "fastavro", "pyspark.*"]
+ignore_missing_imports = true

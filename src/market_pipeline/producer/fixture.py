@@ -5,9 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import random
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, cast
 
 from market_pipeline.contracts.identity import replay_event_id
 
@@ -23,6 +24,8 @@ class FixtureRecord:
 
 def load_manifest(path: Path) -> dict[str, Any]:
     manifest = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError("manifest must contain a JSON object")
     required = {
         "manifest_version",
         "dataset_id",
@@ -39,14 +42,19 @@ def load_manifest(path: Path) -> dict[str, Any]:
     missing = sorted(required - manifest.keys())
     if missing:
         raise ValueError(f"manifest missing fields: {', '.join(missing)}")
-    if manifest["canonical_records"] + manifest["duplicate_records"] + manifest["invalid_records"] != manifest["total_records"]:
+    if (
+        manifest["canonical_records"] + manifest["duplicate_records"] + manifest["invalid_records"]
+        != manifest["total_records"]
+    ):
         raise ValueError("manifest counts do not reconcile")
     if sum(manifest["rejection_counts"].values()) != manifest["invalid_records"]:
         raise ValueError("manifest rejection counts do not reconcile")
-    return manifest
+    return cast(dict[str, Any], manifest)
 
 
-def canonical_event(manifest: Mapping[str, Any], run_id: str, source_sequence: int) -> dict[str, Any]:
+def canonical_event(
+    manifest: Mapping[str, Any], run_id: str, source_sequence: int
+) -> dict[str, Any]:
     symbols = list(manifest["symbols"])
     symbol = symbols[source_sequence % len(symbols)]
     symbol_index = symbols.index(symbol)
@@ -69,7 +77,10 @@ def canonical_event(manifest: Mapping[str, Any], run_id: str, source_sequence: i
 
 
 def canonical_event_set_sha256(manifest: Mapping[str, Any]) -> str:
-    event_ids = [replay_event_id(str(manifest["dataset_id"]), sequence) for sequence in range(int(manifest["canonical_records"]))]
+    event_ids = [
+        replay_event_id(str(manifest["dataset_id"]), sequence)
+        for sequence in range(int(manifest["canonical_records"]))
+    ]
     return hashlib.sha256("\n".join(sorted(event_ids)).encode("ascii")).hexdigest()
 
 
@@ -99,7 +110,8 @@ def _invalid_records(manifest: Mapping[str, Any], run_id: str) -> list[FixtureRe
     now_base = int(manifest["event_time_max_ms"]) + 60_000
     for code, count in manifest["rejection_counts"].items():
         for ordinal in range(int(count)):
-            event = canonical_event(manifest, run_id, sequence)
+            event_data = canonical_event(manifest, run_id, sequence)
+            event: dict[str, Any] | None = event_data
             headers = _headers(
                 run_id=run_id,
                 dataset_id=str(manifest["dataset_id"]),
@@ -109,7 +121,13 @@ def _invalid_records(manifest: Mapping[str, Any], run_id: str) -> list[FixtureRe
             malformed_kind: str | None = None
             if code == "BAD_WIRE":
                 event = None
-                malformed_kind = ("wrong-magic", "truncated", "unknown-schema", "empty-payload", "corrupt-avro")[ordinal % 5]
+                malformed_kind = (
+                    "wrong-magic",
+                    "truncated",
+                    "unknown-schema",
+                    "empty-payload",
+                    "corrupt-avro",
+                )[ordinal % 5]
                 headers = _headers(
                     run_id=run_id,
                     dataset_id=str(manifest["dataset_id"]),
@@ -118,20 +136,27 @@ def _invalid_records(manifest: Mapping[str, Any], run_id: str) -> list[FixtureRe
                     produced_at_ms=now_base + sequence,
                 )
             elif code == "HEADER_PAYLOAD_MISMATCH":
-                event["dataset_id"] = "mismatched-dataset"
+                event_data["dataset_id"] = "mismatched-dataset"
             elif code == "EMPTY_SYMBOL":
-                event["symbol"] = "   "
+                event_data["symbol"] = "   "
             elif code == "NON_POSITIVE_PRICE":
-                event["price"] = 0.0 if ordinal % 2 == 0 else -1.0
+                event_data["price"] = 0.0 if ordinal % 2 == 0 else -1.0
                 if ordinal == 0:
-                    event["volume"] = 0
+                    event_data["volume"] = 0
             elif code == "NON_POSITIVE_VOLUME":
-                event["volume"] = 0 if ordinal % 2 == 0 else -1
+                event_data["volume"] = 0 if ordinal % 2 == 0 else -1
             elif code == "TIMESTAMP_OUT_OF_RANGE":
-                event["event_time_ms"] = int(manifest["event_time_max_ms"]) + 1
+                event_data["event_time_ms"] = int(manifest["event_time_max_ms"]) + 1
             else:
                 raise ValueError(f"unsupported rejection code in manifest: {code}")
-            records.append(FixtureRecord(key=f"invalid-{code.lower()}-{ordinal}", headers=headers, event=event, malformed_kind=malformed_kind))
+            records.append(
+                FixtureRecord(
+                    key=f"invalid-{code.lower()}-{ordinal}",
+                    headers=headers,
+                    event=event,
+                    malformed_kind=malformed_kind,
+                )
+            )
             sequence += 1
     return records
 

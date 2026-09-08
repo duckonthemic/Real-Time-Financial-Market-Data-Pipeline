@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 import os
-from contextlib import AbstractContextManager
+from collections.abc import Mapping
+from contextlib import AbstractContextManager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from .errors import ConfigFailure
-
 
 SCHEMA_VERSION = 1
 
@@ -64,7 +64,9 @@ def read_artifact(path: Path, *, run_id: str, artifact_type: str | None = None) 
 
 
 def safe_run_directory(root: Path, run_id: str, *, must_exist: bool = False) -> Path:
-    if not run_id or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789-" for character in run_id):
+    if not run_id or any(
+        character not in "abcdefghijklmnopqrstuvwxyz0123456789-" for character in run_id
+    ):
         raise ConfigFailure("Unsafe run_id for artifact path", phase="cleanup")
     resolved_root = root.resolve()
     candidate = (resolved_root / run_id).resolve()
@@ -81,7 +83,7 @@ class DemoLock(AbstractContextManager["DemoLock"]):
         self.run_id = run_id
         self._fd: int | None = None
 
-    def __enter__(self) -> "DemoLock":
+    def __enter__(self) -> DemoLock:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
             self._fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
@@ -91,7 +93,7 @@ class DemoLock(AbstractContextManager["DemoLock"]):
                 f"Another demo lock exists ({owner or 'unknown owner'}). Confirm no run is active, then remove {self.path}.",
                 phase="lock",
             ) from exc
-        os.write(self._fd, f"run_id={self.run_id}\npid={os.getpid()}\n".encode("utf-8"))
+        os.write(self._fd, f"run_id={self.run_id}\npid={os.getpid()}\n".encode())
         os.fsync(self._fd)
         return self
 
@@ -99,13 +101,13 @@ class DemoLock(AbstractContextManager["DemoLock"]):
         if self._fd is not None:
             os.close(self._fd)
             self._fd = None
-        try:
+        with suppress(FileNotFoundError):
             self.path.unlink()
-        except FileNotFoundError:
-            pass
 
 
-def write_primary_failure(path: Path, failure: Mapping[str, Any], cleanup_error: str | None = None) -> None:
+def write_primary_failure(
+    path: Path, failure: Mapping[str, Any], cleanup_error: str | None = None
+) -> None:
     if path.exists():
         current = json.loads(path.read_text(encoding="utf-8"))
         if cleanup_error:

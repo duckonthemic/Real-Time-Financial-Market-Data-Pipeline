@@ -16,7 +16,9 @@ from market_pipeline.contracts.identity import replay_event_id
     ],
 )
 def test_replay_identity_matches_byte_contract(dataset_id: str, sequence: int) -> None:
-    expected = hashlib.sha256(dataset_id.encode("utf-8") + b"\x00" + str(sequence).encode("ascii")).hexdigest()
+    expected = hashlib.sha256(
+        dataset_id.encode("utf-8") + b"\x00" + str(sequence).encode("ascii")
+    ).hexdigest()
     assert replay_event_id(dataset_id, sequence) == expected
 
 

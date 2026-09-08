@@ -1,0 +1,70 @@
+name: Recovery scenario
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Deterministic fixture to execute
+        required: true
+        default: recovery-showcase
+        type: choice
+        options:
+          - recovery-showcase
+          - recovery
+      dashboard:
+        description: Build and smoke-test Grafana
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check Docker
+        run: docker info
+      - name: Execute recovery scenario
+        shell: bash
+        run: |
+          args=(--scenario "${{ inputs.scenario }}" --run-id "$RUN_ID")
+          if [ "${{ inputs.dashboard }}" != "true" ]; then
+            args+=(--no-dashboard)
+          fi
+          python scripts/demo.py "${args[@]}"
+      - name: Require portfolio readiness when dashboard is enabled
+        if: inputs.dashboard
+        run: |
+          python -c 'import json, os; from pathlib import Path; p = Path("artifacts") / os.environ["RUN_ID"] / "run-report.json"; r = json.loads(p.read_text()); assert r["portfolio_release_status"] == "READY", r.get("release_checks")'
+      - name: Check all standard Avro rejection reasons in real Spark
+        run: |
+          docker run --rm --network none --hostname localhost -e SPARK_LOCAL_IP=127.0.0.1 \
+            --mount "type=bind,source=$PWD/tests/integration,target=/tests,readonly" \
+            market-spark-recovery:local /opt/spark/bin/spark-submit \
+            --master 'local[1]' /tests/spark_validation_smoke.py
+      - name: Upload run evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-${{ env.RUN_ID }}
+          path: |
+            artifacts/${{ env.RUN_ID }}/*.json
+            artifacts/${{ env.RUN_ID }}/*.jsonl
+            artifacts/${{ env.RUN_ID }}/report.html
+          if-no-files-found: ignore
+      - name: Clean run-owned Docker resources
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "artifacts/$RUN_ID/run.json" ]; then
+            python scripts/demo.py --cleanup-run "$RUN_ID"
+          fi

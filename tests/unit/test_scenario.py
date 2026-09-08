@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import copy
 import json
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 import pytest
 
@@ -12,7 +12,6 @@ from demo_support.compose import CommandResult
 from demo_support.config import DemoConfig, load_demo_config
 from demo_support.errors import ConfigFailure, DeadlineFailure, InfrastructureFailure
 from demo_support.scenario import RecoveryScenario, cleanup_run, purge_evidence
-
 
 ROOT = Path(__file__).parents[2]
 RUN_ID = "run-scenario-01"
@@ -64,12 +63,16 @@ class ScenarioRunner:
         self.clock.on_sleep = self._raise_lag
 
     def _write_progress(self, name: str, **values: object) -> None:
-        atomic_write_json(self.run_dir / name, artifact(name.removesuffix(".json"), RUN_ID, **values))
+        atomic_write_json(
+            self.run_dir / name, artifact(name.removesuffix(".json"), RUN_ID, **values)
+        )
 
     def _raise_lag(self) -> None:
         producer = self.run_dir / "producer-progress.json"
         if producer.exists():
-            self._write_progress("producer-progress.json", state="RUNNING", records=900, expected_records=1270)
+            self._write_progress(
+                "producer-progress.json", state="RUNNING", records=900, expected_records=1270
+            )
 
     def run(self, args: Sequence[str], *, cwd: Path, timeout: float | None = None) -> CommandResult:
         call = tuple(args)
@@ -91,17 +94,28 @@ class ScenarioRunner:
                 ),
             )
         elif call[-1] == "producer" and "up" in call:
-            self._write_progress("producer-progress.json", state="RUNNING", records=700, expected_records=1270)
+            self._write_progress(
+                "producer-progress.json", state="RUNNING", records=700, expected_records=1270
+            )
             self._write_progress("streaming-progress.json", state="RUNNING", records=500)
         elif call[-1] == "spark-recovery" and "--force-recreate" in call:
-            self._write_progress("producer-progress.json", state="COMPLETED", records=1270, expected_records=1270)
+            self._write_progress(
+                "producer-progress.json", state="COMPLETED", records=1270, expected_records=1270
+            )
             self._write_progress("streaming-progress.json", state="RUNNING", records=1270)
         elif call[-3:] == ("run", "--rm", "verifier"):
             atomic_write_json(
                 self.run_dir / "run-report.json",
-                artifact("run-report", RUN_ID, data_contract_status="PASSED", portfolio_release_status="READY"),
+                artifact(
+                    "run-report",
+                    RUN_ID,
+                    data_contract_status="PASSED",
+                    portfolio_release_status="READY",
+                ),
             )
-            (self.run_dir / "report.html").write_text("<!doctype html><title>PASS</title>", encoding="utf-8")
+            (self.run_dir / "report.html").write_text(
+                "<!doctype html><title>PASS</title>", encoding="utf-8"
+            )
         return CommandResult(0, "", "")
 
 
@@ -120,11 +134,25 @@ def test_recovery_scenario_reaches_pass_with_kill_and_recreate(tmp_path: Path) -
     )
     scenario.preflight = lambda: None  # type: ignore[method-assign]
     result = scenario.run()
-    states = [json.loads(line)["state"] for line in scenario.timeline_file.read_text(encoding="utf-8").splitlines()]
+    states = [
+        json.loads(line)["state"]
+        for line in scenario.timeline_file.read_text(encoding="utf-8").splitlines()
+    ]
     assert result.state == "PASSED"
-    assert states == ["CREATED", "INFRA_READY", "RUN_READY", "PRODUCING", "FAILURE_INJECTED", "RECOVERING", "VERIFYING", "PASSED"]
+    assert states == [
+        "CREATED",
+        "INFRA_READY",
+        "RUN_READY",
+        "PRODUCING",
+        "FAILURE_INJECTED",
+        "RECOVERING",
+        "VERIFYING",
+        "PASSED",
+    ]
     assert any("kill" in call and "SIGKILL" in call for call in runner.calls)
     assert any("--force-recreate" in call for call in runner.calls)
+    stored_run = json.loads(scenario.run_file.read_text(encoding="utf-8"))
+    assert "grafana_password" not in stored_run
 
 
 def test_wait_raises_stable_timeout_category(tmp_path: Path) -> None:
@@ -147,7 +175,9 @@ def test_existing_lock_does_not_consume_run_id(tmp_path: Path) -> None:
     lock = tmp_path / ".gstack" / "demo.lock"
     lock.parent.mkdir()
     lock.write_text("run_id=another-run\n", encoding="utf-8")
-    scenario = RecoveryScenario(config, run_id=RUN_ID, scenario_name="recovery-showcase", dashboard=False)
+    scenario = RecoveryScenario(
+        config, run_id=RUN_ID, scenario_name="recovery-showcase", dashboard=False
+    )
     with pytest.raises(ConfigFailure, match="another-run"):
         scenario.run()
     assert not scenario.run_directory.exists()

@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from market_pipeline.contracts.models import RunConfig
 from market_pipeline.ops.runtime import artifact, atomic_json
@@ -15,33 +16,45 @@ from market_pipeline.streaming.batch import BatchFrames
 def derive_batch_bounds(frame: Any) -> dict[int, tuple[int, int]]:
     from pyspark.sql import functions as functions
 
-    rows = frame.groupBy("partition").agg(
-        functions.min("offset").alias("start"),
-        (functions.max("offset") + functions.lit(1)).alias("end"),
-    ).collect()
+    rows = (
+        frame.groupBy("partition")
+        .agg(
+            functions.min("offset").alias("start"),
+            (functions.max("offset") + functions.lit(1)).alias("end"),
+        )
+        .collect()
+    )
     return {int(row["partition"]): (int(row["start"]), int(row["end"])) for row in rows}
 
 
 def _header_text(name: str) -> Any:
     from pyspark.sql import functions as functions
 
-    return functions.decode(functions.element_at(functions.col("header_map"), functions.lit(name)), "UTF-8")
+    return functions.decode(
+        functions.element_at(functions.col("header_map"), functions.lit(name)), "UTF-8"
+    )
 
 
-def transform_batch(frame: Any, config: RunConfig, schema_json: str, min_event_time_ms: int, max_event_time_ms: int) -> BatchFrames:
+def transform_batch(
+    frame: Any, config: RunConfig, schema_json: str, min_event_time_ms: int, max_event_time_ms: int
+) -> BatchFrames:
     from pyspark.sql import functions as functions
     from pyspark.sql.avro.functions import from_avro
 
-    with_headers = frame.withColumn("header_map", functions.map_from_entries(functions.col("headers")))
+    with_headers = frame.withColumn(
+        "header_map", functions.map_from_entries(functions.col("headers"))
+    )
     enriched = (
-        with_headers
-        .withColumn("claimed_run_id", _header_text("run_id"))
+        with_headers.withColumn("claimed_run_id", _header_text("run_id"))
         .withColumn("claimed_dataset_id", _header_text("dataset_id"))
         .withColumn("claimed_source_sequence", _header_text("source_sequence").cast("long"))
         .withColumn("claimed_payload_type", _header_text("payload_type"))
         .withColumn("claimed_produced_at_ms", _header_text("produced_at_ms").cast("long"))
         .withColumn("magic_hex", functions.hex(functions.substring("value", 1, 1)))
-        .withColumn("wire_schema_id", functions.conv(functions.hex(functions.substring("value", 2, 4)), 16, 10).cast("int"))
+        .withColumn(
+            "wire_schema_id",
+            functions.conv(functions.hex(functions.substring("value", 2, 4)), 16, 10).cast("int"),
+        )
         .withColumn(
             "wire_ok",
             (functions.length("value") > 5)
@@ -90,9 +103,19 @@ def transform_batch(frame: Any, config: RunConfig, schema_json: str, min_event_t
     )
     rejection = (
         functions.when(~required_headers_ok, functions.lit("MISSING_OR_INVALID_HEADER"))
-        .when(~functions.col("wire_ok") | functions.col("event").isNull(), functions.lit("BAD_WIRE"))
+        .when(
+            # PERMISSIVE Avro failures can be a non-null struct of null fields.
+            # schema_version is non-nullable in the wire contract.
+            ~functions.col("wire_ok")
+            | functions.col("event").isNull()
+            | functions.col("event.schema_version").isNull(),
+            functions.lit("BAD_WIRE"),
+        )
         .when(~attribution_ok, functions.lit("HEADER_PAYLOAD_MISMATCH"))
-        .when(functions.length(functions.trim(functions.col("event.symbol"))) == 0, functions.lit("EMPTY_SYMBOL"))
+        .when(
+            functions.length(functions.trim(functions.col("event.symbol"))) == 0,
+            functions.lit("EMPTY_SYMBOL"),
+        )
         .when(
             functions.col("event.price").isNull()
             | functions.isnan(functions.col("event.price"))
@@ -100,7 +123,10 @@ def transform_batch(frame: Any, config: RunConfig, schema_json: str, min_event_t
             | (functions.col("event.price") <= 0),
             functions.lit("NON_POSITIVE_PRICE"),
         )
-        .when(functions.col("event.volume").isNull() | (functions.col("event.volume") <= 0), functions.lit("NON_POSITIVE_VOLUME"))
+        .when(
+            functions.col("event.volume").isNull() | (functions.col("event.volume") <= 0),
+            functions.lit("NON_POSITIVE_VOLUME"),
+        )
         .when(
             (functions.col("event.event_time_ms") < functions.lit(min_event_time_ms))
             | (functions.col("event.event_time_ms") > functions.lit(max_event_time_ms)),
@@ -109,7 +135,12 @@ def transform_batch(frame: Any, config: RunConfig, schema_json: str, min_event_t
     )
     classified = decoded.withColumn("rejection_code", rejection).withColumn(
         "rejection_detail",
-        functions.when(functions.col("rejection_code").isNotNull(), functions.concat(functions.lit("Rejected by deterministic rule: "), functions.col("rejection_code"))),
+        functions.when(
+            functions.col("rejection_code").isNotNull(),
+            functions.concat(
+                functions.lit("Rejected by deterministic rule: "), functions.col("rejection_code")
+            ),
+        ),
     )
     bronze = classified.select(
         functions.lit(config.run_id).alias("owner_run_id"),
@@ -119,7 +150,9 @@ def transform_batch(frame: Any, config: RunConfig, schema_json: str, min_event_t
         functions.col("timestamp").alias("kafka_timestamp"),
         functions.col("key").alias("kafka_key"),
         functions.col("value").alias("raw_value"),
-        functions.when(functions.col("magic_hex") == "00", functions.col("wire_schema_id")).alias("schema_id"),
+        functions.when(functions.col("magic_hex") == "00", functions.col("wire_schema_id")).alias(
+            "schema_id"
+        ),
         "claimed_run_id",
         "claimed_dataset_id",
         "claimed_source_sequence",
@@ -182,7 +215,14 @@ class SilverWriter(CassandraWriter):
 
         super().write(frame)
         projection = frame.select(
-            "run_id", "symbol", "event_date", "event_time", "event_id", "price", "volume", "conditions"
+            "run_id",
+            "symbol",
+            "event_date",
+            "event_time",
+            "event_id",
+            "price",
+            "volume",
+            "conditions",
         )
         projection.write.format("org.apache.spark.sql.cassandra").mode("append").options(
             keyspace=self.keyspace,
@@ -222,14 +262,18 @@ class KafkaDlqPublisher:
             ).encode("utf-8")
             while True:
                 try:
-                    self.producer.produce(self.topic, key=key.encode("utf-8"), value=value, on_delivery=callback)
+                    self.producer.produce(
+                        self.topic, key=key.encode("utf-8"), value=value, on_delivery=callback
+                    )
                     break
                 except BufferError:
                     self.producer.poll(0.1)
             self.producer.poll(0)
         remaining = self.producer.flush(15)
         if errors or remaining:
-            raise RuntimeError(f"Kafka DLQ acknowledgement failed: errors={len(errors)}, remaining={remaining}")
+            raise RuntimeError(
+                f"Kafka DLQ acknowledgement failed: errors={len(errors)}, remaining={remaining}"
+            )
 
 
 class CassandraLedger:
@@ -250,7 +294,9 @@ class CassandraLedger:
             (run_id, query_name, batch_id),
         ).one()
         if row and row.cumulative_next_offsets:
-            self.cumulative.update({int(key): int(value) for key, value in row.cumulative_next_offsets.items()})
+            self.cumulative.update(
+                {int(key): int(value) for key, value in row.cumulative_next_offsets.items()}
+            )
         if row and row.status == "COMPLETED":
             processed = sum(
                 self.cumulative.get(partition, start) - start
@@ -277,23 +323,54 @@ class CassandraLedger:
         ).one()
         return int(row.attempt_count or 0) if row else 0
 
-    def started(self, run_id: str, query_name: str, batch_id: int, bounds: Mapping[int, tuple[int, int]]) -> None:
+    def started(
+        self, run_id: str, query_name: str, batch_id: int, bounds: Mapping[int, tuple[int, int]]
+    ) -> None:
         starts = {partition: pair[0] for partition, pair in bounds.items()}
         ends = {partition: pair[1] for partition, pair in bounds.items()}
         self.session.execute(
             "INSERT INTO stream_batches_by_query (run_id,query_name,batch_id,status,batch_start_offsets,batch_end_offsets_exclusive,attempt_count,started_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-            (run_id, query_name, batch_id, "STARTED", starts, ends, self._attempt_count(run_id, query_name, batch_id) + 1, datetime.now(timezone.utc)),
+            (
+                run_id,
+                query_name,
+                batch_id,
+                "STARTED",
+                starts,
+                ends,
+                self._attempt_count(run_id, query_name, batch_id) + 1,
+                datetime.now(UTC),
+            ),
         )
 
-    def completed(self, run_id: str, query_name: str, batch_id: int, counts: Mapping[str, int], bounds: Mapping[int, tuple[int, int]]) -> None:
+    def completed(
+        self,
+        run_id: str,
+        query_name: str,
+        batch_id: int,
+        counts: Mapping[str, int],
+        bounds: Mapping[int, tuple[int, int]],
+    ) -> None:
         for partition, (_, end) in bounds.items():
             self.cumulative[partition] = max(self.cumulative.get(partition, end), end)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         self.session.execute(
             "UPDATE stream_batches_by_query SET status=%s,input_count=%s,valid_count=%s,invalid_count=%s,cumulative_next_offsets=%s,completed_at=%s WHERE run_id=%s AND query_name=%s AND batch_id=%s",
-            ("COMPLETED", counts["input"], counts["valid"], counts["invalid"], self.cumulative, now, run_id, query_name, batch_id),
+            (
+                "COMPLETED",
+                counts["input"],
+                counts["valid"],
+                counts["invalid"],
+                self.cumulative,
+                now,
+                run_id,
+                query_name,
+                batch_id,
+            ),
         )
-        processed = sum(self.cumulative.get(partition, start) - start for partition, start in self.start_offsets.items())
+        processed = sum(
+            self.cumulative.get(partition, start) - start
+            for partition, start in self.start_offsets.items()
+        )
         atomic_json(
             self.progress_path,
             artifact(
@@ -311,7 +388,10 @@ class CassandraLedger:
             "UPDATE stream_batches_by_query SET status=%s,last_error=%s WHERE run_id=%s AND query_name=%s AND batch_id=%s",
             ("FAILED", error[:1000], run_id, query_name, batch_id),
         )
-        atomic_json(self.progress_path, artifact("streaming-progress", run_id, state="FAILED", records=0, error=error[:1000]))
+        atomic_json(
+            self.progress_path,
+            artifact("streaming-progress", run_id, state="FAILED", records=0, error=error[:1000]),
+        )
 
 
 def build_spark_session(config: RunConfig) -> Any:

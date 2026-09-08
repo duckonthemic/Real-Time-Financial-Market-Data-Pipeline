@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from typing import Any, Iterable, Mapping
-
+from collections.abc import Iterable, Mapping
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 MAX_EVENTS = 25_000
 MAX_EVENTS_PER_SYMBOL_WINDOW = 2_000
@@ -22,13 +22,15 @@ def aggregate_ohlcv(events: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]
         key = (str(event["symbol"]), window_start_ms)
         grouped[key].append(event)
         if len(grouped[key]) > MAX_EVENTS_PER_SYMBOL_WINDOW:
-            raise ValueError(f"bounded Gold supports at most {MAX_EVENTS_PER_SYMBOL_WINDOW} events per symbol/window")
+            raise ValueError(
+                f"bounded Gold supports at most {MAX_EVENTS_PER_SYMBOL_WINDOW} events per symbol/window"
+            )
     output = []
     for (symbol, window_start_ms), rows in sorted(grouped.items()):
         ordered = sorted(rows, key=lambda row: (int(row["event_time_ms"]), str(row["event_id"])))
         total_volume = sum(int(row["volume"]) for row in ordered)
         notional = sum(float(row["price"]) * int(row["volume"]) for row in ordered)
-        start = datetime.fromtimestamp(window_start_ms / 1000, tz=timezone.utc)
+        start = datetime.fromtimestamp(window_start_ms / 1000, tz=UTC)
         output.append(
             {
                 "run_id": str(ordered[0]["run_id"]),

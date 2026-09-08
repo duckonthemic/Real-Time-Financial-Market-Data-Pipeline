@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import date, datetime, timezone
-from typing import Any, Mapping
+from collections.abc import Mapping
+from datetime import UTC, date, datetime
+from typing import Any
 
 
 def utc_datetime_from_ms(value: int) -> datetime:
-    return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
+    return datetime.fromtimestamp(value / 1000, tz=UTC)
 
 
 def header_text(headers: Mapping[str, Any], key: str) -> str | None:
@@ -29,7 +30,9 @@ def header_int(headers: Mapping[str, Any], key: str) -> int | None:
         return None
 
 
-def bronze_row(raw: Mapping[str, Any], *, owner_run_id: str, schema_id: int | None) -> dict[str, Any]:
+def bronze_row(
+    raw: Mapping[str, Any], *, owner_run_id: str, schema_id: int | None
+) -> dict[str, Any]:
     headers = dict(raw.get("headers") or {})
     return {
         "owner_run_id": owner_run_id,

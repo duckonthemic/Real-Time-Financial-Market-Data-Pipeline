@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import io
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, cast
 
 from market_pipeline.contracts.wire import wrap_confluent_payload
 
@@ -13,7 +14,7 @@ from market_pipeline.contracts.wire import wrap_confluent_payload
 def load_avro_schema(path: Path) -> dict[str, Any]:
     from fastavro import parse_schema
 
-    return parse_schema(json.loads(path.read_text(encoding="utf-8")))
+    return cast(dict[str, Any], parse_schema(json.loads(path.read_text(encoding="utf-8"))))
 
 
 def encode_event(event: Mapping[str, Any], schema: Mapping[str, Any], schema_id: int) -> bytes:

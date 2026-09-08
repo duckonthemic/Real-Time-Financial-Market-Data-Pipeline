@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from functools import partial
 from pathlib import Path
 
@@ -54,7 +53,9 @@ def main() -> int:
     )
     query = (
         source.writeStream.queryName("recovery_pipeline")
-        .foreachBatch(lambda frame, batch_id: process_recovery_batch(frame, int(batch_id), dependencies))
+        .foreachBatch(
+            lambda frame, batch_id: process_recovery_batch(frame, int(batch_id), dependencies)
+        )
         .outputMode("append")
         .trigger(processingTime=f"{config.trigger_seconds} seconds")
         .option("checkpointLocation", config.checkpoint_path)

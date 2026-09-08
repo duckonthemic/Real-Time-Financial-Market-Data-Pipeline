@@ -6,12 +6,23 @@ from market_pipeline.analytics.ohlcv import MAX_EVENTS, aggregate_ohlcv
 
 
 def event(event_id: str, time_ms: int, price: float, volume: int):
-    return {"run_id": "run-gold-01", "event_id": event_id, "symbol": "AAPL", "event_time_ms": time_ms, "price": price, "volume": volume}
+    return {
+        "run_id": "run-gold-01",
+        "event_id": event_id,
+        "symbol": "AAPL",
+        "event_time_ms": time_ms,
+        "price": price,
+        "volume": volume,
+    }
 
 
 def test_exact_ohlcv_and_vwap_with_deterministic_tie_break() -> None:
     start = 1735828200000
-    rows = [event("b", start, 101.0, 2), event("a", start, 100.0, 1), event("c", start + 1000, 99.0, 3)]
+    rows = [
+        event("b", start, 101.0, 2),
+        event("a", start, 100.0, 1),
+        event("c", start + 1000, 99.0, 3),
+    ]
     result = aggregate_ohlcv(rows)[0]
     assert result["open"] == 100.0
     assert result["high"] == 101.0

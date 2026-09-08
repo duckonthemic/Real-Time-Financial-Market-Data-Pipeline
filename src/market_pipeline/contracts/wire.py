@@ -5,7 +5,6 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
-
 MAGIC_BYTE = 0
 ENVELOPE_BYTES = 5
 
@@ -28,7 +27,9 @@ def wrap_confluent_payload(schema_id: int, avro_payload: bytes) -> bytes:
     return bytes((MAGIC_BYTE,)) + struct.pack(">I", schema_id) + avro_payload
 
 
-def inspect_confluent_payload(value: bytes | bytearray | memoryview, expected_schema_id: int) -> WirePayload:
+def inspect_confluent_payload(
+    value: bytes | bytearray | memoryview, expected_schema_id: int
+) -> WirePayload:
     raw = bytes(value)
     if len(raw) < ENVELOPE_BYTES:
         raise WireContractError("BAD_WIRE: truncated Confluent envelope")

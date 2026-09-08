@@ -8,9 +8,8 @@ import sys
 from pathlib import Path
 
 from demo_support.config import load_demo_config
-from demo_support.errors import DemoFailure, UNEXPECTED
+from demo_support.errors import UNEXPECTED, DemoFailure
 from demo_support.scenario import RecoveryScenario, cleanup_run, generated_run_id, purge_evidence
-
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -18,12 +17,28 @@ ROOT = Path(__file__).resolve().parent.parent
 def parser() -> argparse.ArgumentParser:
     command = argparse.ArgumentParser(description="Run or clean the Market Data Reliability Lab")
     actions = command.add_mutually_exclusive_group()
-    actions.add_argument("--cleanup-run", metavar="RUN_ID", help="Remove only one run's Compose resources and checkpoint; keep evidence")
-    actions.add_argument("--purge-evidence", metavar="RUN_ID", help="Delete one already-cleaned run's evidence directory")
-    command.add_argument("--scenario", choices=("recovery", "recovery-showcase"), default="recovery")
+    actions.add_argument(
+        "--cleanup-run",
+        metavar="RUN_ID",
+        help="Remove only one run's Compose resources and checkpoint; keep evidence",
+    )
+    actions.add_argument(
+        "--purge-evidence",
+        metavar="RUN_ID",
+        help="Delete one already-cleaned run's evidence directory",
+    )
+    command.add_argument(
+        "--scenario", choices=("recovery", "recovery-showcase"), default="recovery"
+    )
     command.add_argument("--run-id", help="Optional non-reusable run ID")
-    command.add_argument("--no-dashboard", action="store_true", help="Skip Grafana for reduced CI runs")
-    command.add_argument("--open-dashboard", action="store_true", help="Open the loopback Grafana deep link after PASS")
+    command.add_argument(
+        "--no-dashboard", action="store_true", help="Skip Grafana for reduced CI runs"
+    )
+    command.add_argument(
+        "--open-dashboard",
+        action="store_true",
+        help="Open the loopback Grafana deep link after PASS",
+    )
     return command
 
 
@@ -48,10 +63,11 @@ def main(argv: list[str] | None = None) -> int:
             open_dashboard=args.open_dashboard,
         )
         print(f"RUN_ID: {scenario.run_id}")
-        print(f"DASHBOARD: {scenario.dashboard_url}")
         result = scenario.run()
         print(f"PASS: {result.run_id}")
         print(f"REPORT: {result.report_path}")
+        if result.dashboard_url:
+            print(f"DASHBOARD: {result.dashboard_url}")
         print(f"Clean runtime later: python scripts/demo.py --cleanup-run {result.run_id}")
         return 0
     except DemoFailure as failure:

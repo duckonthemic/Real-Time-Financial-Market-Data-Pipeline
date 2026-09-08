@@ -122,8 +122,9 @@ logs/
 tmp/
 .tmp/
 .gstack/
-checkpoints/
-artifacts/
+.playwright-cli/
+/checkpoints/
+/artifacts/
 PLAN/
 
 # Secrets

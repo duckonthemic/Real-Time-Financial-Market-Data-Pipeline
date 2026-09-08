@@ -9,7 +9,13 @@ from threading import Lock
 from typing import Any
 
 from market_pipeline.ops.provision import capture_end_offsets
-from market_pipeline.ops.runtime import artifact, atomic_json, manifest_from_env, required_env, run_config_from_env
+from market_pipeline.ops.runtime import (
+    artifact,
+    atomic_json,
+    manifest_from_env,
+    required_env,
+    run_config_from_env,
+)
 from market_pipeline.producer.encoding import encode_event, load_avro_schema, malformed_value
 from market_pipeline.producer.fixture import iter_fixture
 
@@ -74,7 +80,13 @@ def main() -> int:
             value = encode_event(record.event, schema, config.schema_id)
         while True:
             try:
-                producer.produce(config.input_topic, key=record.key.encode("utf-8"), value=value, headers=list(record.headers), on_delivery=callback)
+                producer.produce(
+                    config.input_topic,
+                    key=record.key.encode("utf-8"),
+                    value=value,
+                    headers=list(record.headers),
+                    on_delivery=callback,
+                )
                 break
             except BufferError:
                 producer.poll(0.1)
@@ -107,7 +119,9 @@ def main() -> int:
         ),
     )
     if state != "COMPLETED":
-        raise RuntimeError(f"producer delivery accounting failed: delivered={delivered}, errors={len(errors)}")
+        raise RuntimeError(
+            f"producer delivery accounting failed: delivered={delivered}, errors={len(errors)}"
+        )
     return 0
 
 

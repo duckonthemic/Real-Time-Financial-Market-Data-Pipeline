@@ -6,12 +6,13 @@ import hashlib
 import os
 import re
 import tomllib
+from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, cast
 
 from .errors import ConfigFailure
-
 
 RUN_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{7,63}$")
 
@@ -32,7 +33,7 @@ class DemoConfig:
 
     def scenario(self, name: str) -> Mapping[str, Any]:
         try:
-            return self.values["scenario"][name]
+            return cast(Mapping[str, Any], self.values["scenario"][name])
         except KeyError as exc:
             raise ConfigFailure(f"Unknown scenario: {name}") from exc
 
@@ -83,7 +84,9 @@ def load_demo_config(path: Path) -> DemoConfig:
         manifest = resolved.parent.parent / str(values["scenario"][scenario]["manifest"])
         if not manifest.is_file():
             raise ConfigFailure(f"Scenario manifest not found: {manifest}")
-    cpu_total = sum(float(spec["cpus"]) for spec in values["resources"].values() if isinstance(spec, Mapping))
+    cpu_total = sum(
+        float(spec["cpus"]) for spec in values["resources"].values() if isinstance(spec, Mapping)
+    )
     if cpu_total > float(values["resources"]["required_cpus"]):
         raise ConfigFailure("Per-service CPU limits exceed resources.required_cpus")
     return DemoConfig(path=resolved, root=resolved.parent.parent, values=values)
@@ -112,6 +115,7 @@ def compose_environment(
     resources = values["resources"]
     return {
         "COMPOSE_PROJECT_NAME": f"market-recovery-{run_id}",
+        "ARTIFACT_GID": str(os.getgid() if hasattr(os, "getgid") else 0),
         "RUN_ID": run_id,
         "SCHEMA_ID": str(schema_id),
         "INPUT_TOPIC": str(values["topics"]["input"]["name"]),
@@ -157,13 +161,14 @@ def render_compose_env(path: Path, values: Mapping[str, str]) -> str:
     payload = "\n".join(lines) + "\n"
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(payload, encoding="utf-8", newline="\n")
-    try:
+    with suppress(OSError):
         os.chmod(temporary, 0o600)
-    except OSError:
-        pass
     os.replace(temporary, path)
-    redacted = "\n".join(
-        f"{key}=<redacted>" if "PASSWORD" in key or "SECRET" in key else f"{key}={values[key]}"
-        for key in sorted(values)
-    ) + "\n"
+    redacted = (
+        "\n".join(
+            f"{key}=<redacted>" if "PASSWORD" in key or "SECRET" in key else f"{key}={values[key]}"
+            for key in sorted(values)
+        )
+        + "\n"
+    )
     return hashlib.sha256(redacted.encode("utf-8")).hexdigest()

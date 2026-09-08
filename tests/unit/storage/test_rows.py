@@ -43,7 +43,16 @@ def test_silver_mapping_uses_deterministic_primary_key_fields() -> None:
 
 def test_dlq_source_timestamp_is_stable_kafka_timestamp() -> None:
     timestamp = datetime(2025, 1, 2, tzinfo=UTC)
-    raw = {"topic": "market.trades.v1", "partition": 0, "offset": 2, "timestamp": timestamp, "value": b"bad", "headers": {}}
-    row = dlq_row(raw, owner_run_id="run-owner-01", rejection_code="BAD_WIRE", rejection_detail="bad")
+    raw = {
+        "topic": "market.trades.v1",
+        "partition": 0,
+        "offset": 2,
+        "timestamp": timestamp,
+        "value": b"bad",
+        "headers": {},
+    }
+    row = dlq_row(
+        raw, owner_run_id="run-owner-01", rejection_code="BAD_WIRE", rejection_detail="bad"
+    )
     assert row["source_timestamp"] is timestamp
     assert row["rejection_code"] == "BAD_WIRE"

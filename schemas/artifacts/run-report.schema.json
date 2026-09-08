@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://market-pipeline.local/schemas/artifacts/run-report.schema.json",
+  "title": "Independent verification report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["artifact_type", "schema_version", "run_id", "updated_at", "data_contract_status", "portfolio_release_status", "checks"],
+  "properties": {
+    "artifact_type": {"const": "run-report"},
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "data_contract_status": {"enum": ["PASSED", "FAILED"]},
+    "portfolio_release_status": {"enum": ["READY", "NOT_READY"]},
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "passed", "expected", "actual"],
+        "properties": {
+          "name": {"type": "string"},
+          "passed": {"type": "boolean"},
+          "expected": {},
+          "actual": {}
+        }
+      }
+    }
+  }
+}

@@ -4,17 +4,23 @@ from __future__ import annotations
 
 import html
 import json
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 
 def _text(value: Any) -> str:
-    if isinstance(value, (dict, list, tuple)):
+    if isinstance(value, dict | list | tuple):
         return json.dumps(value, sort_keys=True, separators=(",", ":"))
     return str(value)
 
 
-def render_report(report: Mapping[str, Any], *, timeline: Iterable[Mapping[str, Any]] = (), lag_samples: Iterable[Mapping[str, Any]] = ()) -> str:
+def render_report(
+    report: Mapping[str, Any],
+    *,
+    timeline: Iterable[Mapping[str, Any]] = (),
+    lag_samples: Iterable[Mapping[str, Any]] = (),
+) -> str:
     checks = list(report.get("checks") or [])
     transitions = list(timeline)
     samples = list(lag_samples)
@@ -23,33 +29,46 @@ def render_report(report: Mapping[str, Any], *, timeline: Iterable[Mapping[str, 
     passed = data_status == "PASSED"
     state_class = "passed" if passed else "failed"
     status_icon = "✓" if passed else "×"
-    check_rows = "".join(
-        "<tr>"
-        f"<th scope='row'><code>{html.escape(str(check.get('name', 'unknown')))}</code></th>"
-        f"<td>{html.escape(_text(check.get('expected')))}</td>"
-        f"<td>{html.escape(_text(check.get('actual')))}</td>"
-        f"<td class={'pass' if check.get('passed') else 'fail'}>{'PASS' if check.get('passed') else 'FAIL'}</td>"
-        "</tr>"
-        for check in checks
-    ) or "<tr><td colspan='4'>No invariant results were recorded.</td></tr>"
-    timeline_rows = "".join(
-        "<li>"
-        f"<time datetime='{html.escape(str(item.get('occurred_at', '')))}'>{html.escape(str(item.get('occurred_at', 'unknown')))}</time>"
-        f"<div><strong>{html.escape(str(item.get('state', 'UNKNOWN')))}</strong><span>{html.escape(str(item.get('reason', '')))}</span></div>"
-        "</li>"
-        for item in transitions
-    ) or "<li><div><strong>No timeline available</strong><span>The run did not emit transitions.</span></div></li>"
-    lag_rows = "".join(
-        "<tr>"
-        f"<td>{html.escape(str(item.get('sampled_at', '')))}</td>"
-        f"<td>{html.escape(str(item.get('state', '')))}</td>"
-        f"<td>{html.escape(str(item.get('produced_frontier', '')))}</td>"
-        f"<td>{html.escape(str(item.get('processed_frontier', '')))}</td>"
-        f"<td>{html.escape(str(item.get('total_lag', '')))}</td>"
-        "</tr>"
-        for item in samples
-    ) or "<tr><td colspan='5'>No lag samples were recorded.</td></tr>"
-    release_strip = "" if release_status == "READY" else "<div class='release-warning' role='status'>NOT READY FOR CV — data evidence may pass, but a required portfolio artifact is missing.</div>"
+    check_rows = (
+        "".join(
+            "<tr>"
+            f"<th scope='row'><code>{html.escape(str(check.get('name', 'unknown')))}</code></th>"
+            f"<td>{html.escape(_text(check.get('expected')))}</td>"
+            f"<td>{html.escape(_text(check.get('actual')))}</td>"
+            f"<td class={'pass' if check.get('passed') else 'fail'}>{'PASS' if check.get('passed') else 'FAIL'}</td>"
+            "</tr>"
+            for check in checks
+        )
+        or "<tr><td colspan='4'>No invariant results were recorded.</td></tr>"
+    )
+    timeline_rows = (
+        "".join(
+            "<li>"
+            f"<time datetime='{html.escape(str(item.get('occurred_at', '')))}'>{html.escape(str(item.get('occurred_at', 'unknown')))}</time>"
+            f"<div><strong>{html.escape(str(item.get('state', 'UNKNOWN')))}</strong><span>{html.escape(str(item.get('reason', '')))}</span></div>"
+            "</li>"
+            for item in transitions
+        )
+        or "<li><div><strong>No timeline available</strong><span>The run did not emit transitions.</span></div></li>"
+    )
+    lag_rows = (
+        "".join(
+            "<tr>"
+            f"<td>{html.escape(str(item.get('sampled_at', '')))}</td>"
+            f"<td>{html.escape(str(item.get('state', '')))}</td>"
+            f"<td>{html.escape(str(item.get('produced_frontier', '')))}</td>"
+            f"<td>{html.escape(str(item.get('processed_frontier', '')))}</td>"
+            f"<td>{html.escape(str(item.get('total_lag', '')))}</td>"
+            "</tr>"
+            for item in samples
+        )
+        or "<tr><td colspan='5'>No lag samples were recorded.</td></tr>"
+    )
+    release_strip = (
+        ""
+        if release_status == "READY"
+        else "<div class='release-warning' role='status'>NOT READY FOR CV — data evidence may pass, but a required portfolio artifact is missing.</div>"
+    )
     run_id = html.escape(str(report.get("run_id", "unknown")))
     updated_at = html.escape(str(report.get("updated_at", "unknown")))
     scenario = html.escape(str(report.get("scenario", "unknown")))
@@ -74,8 +93,18 @@ def render_report(report: Mapping[str, Any], *, timeline: Iterable[Mapping[str, 
 <footer>This report says <strong>at-least-once processing with replay-safe projections</strong>. It does not claim end-to-end exactly-once delivery.</footer></body></html>"""
 
 
-def write_report(path: Path, report: Mapping[str, Any], *, timeline: Iterable[Mapping[str, Any]] = (), lag_samples: Iterable[Mapping[str, Any]] = ()) -> None:
+def write_report(
+    path: Path,
+    report: Mapping[str, Any],
+    *,
+    timeline: Iterable[Mapping[str, Any]] = (),
+    lag_samples: Iterable[Mapping[str, Any]] = (),
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(render_report(report, timeline=timeline, lag_samples=lag_samples), encoding="utf-8", newline="\n")
+    temporary.write_text(
+        render_report(report, timeline=timeline, lag_samples=lag_samples),
+        encoding="utf-8",
+        newline="\n",
+    )
     temporary.replace(path)

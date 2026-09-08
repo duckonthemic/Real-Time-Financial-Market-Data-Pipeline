@@ -1,0 +1,11 @@
+**
+!docker/
+!docker/**
+!fixtures/
+!fixtures/**
+!grafana/
+!grafana/**
+!schemas/
+!schemas/**
+!src/
+!src/**

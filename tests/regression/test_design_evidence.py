@@ -9,7 +9,6 @@ from demo_support.config import DemoConfig, load_demo_config
 from demo_support.scenario import RecoveryScenario
 from market_pipeline.verification.report import render_report
 
-
 ROOT = Path(__file__).parents[2]
 RUN_ID = "run-design-regression-01"
 
@@ -30,9 +29,9 @@ def test_dashboard_verdicts_use_numeric_observer_projections() -> None:
     dashboard = (ROOT / "grafana" / "dashboards" / "market-data-main.json").read_text(
         encoding="utf-8"
     )
-    publisher = (
-        ROOT / "src" / "market_pipeline" / "verification" / "main.py"
-    ).read_text(encoding="utf-8")
+    publisher = (ROOT / "src" / "market_pipeline" / "verification" / "main.py").read_text(
+        encoding="utf-8"
+    )
 
     for field in ("data_contract_code", "portfolio_release_code"):
         assert f"{field} int" in schema

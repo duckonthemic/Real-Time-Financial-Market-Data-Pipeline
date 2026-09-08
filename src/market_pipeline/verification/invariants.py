@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from collections import Counter
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from market_pipeline.contracts.models import VerificationConfig
-
 
 Coordinate = tuple[str, int, int]
 
@@ -60,7 +61,9 @@ class VerificationSnapshot:
     actual_gold_rows: tuple[Mapping[str, Any], ...] = field(default_factory=tuple)
 
 
-def expected_coordinates(config: VerificationConfig, snapshot: VerificationSnapshot) -> frozenset[Coordinate]:
+def expected_coordinates(
+    config: VerificationConfig, snapshot: VerificationSnapshot
+) -> frozenset[Coordinate]:
     return frozenset(
         (config.input_topic, partition, offset)
         for partition, start in snapshot.start_offsets_inclusive.items()
@@ -70,6 +73,14 @@ def expected_coordinates(config: VerificationConfig, snapshot: VerificationSnaps
 
 def _event_set_digest(event_ids: Iterable[str]) -> str:
     return hashlib.sha256("\n".join(sorted(event_ids)).encode("ascii")).hexdigest()
+
+
+def _numeric_mismatch(expected: Any, actual: Any, tolerance: float) -> bool:
+    try:
+        left, right = float(expected), float(actual)
+        return not (math.isfinite(left) and math.isfinite(right)) or abs(left - right) > tolerance
+    except (TypeError, ValueError, OverflowError):
+        return True
 
 
 def verify(config: VerificationConfig, snapshot: VerificationSnapshot) -> list[Check]:
@@ -127,10 +138,14 @@ def verify(config: VerificationConfig, snapshot: VerificationSnapshot) -> list[C
     checks.append(
         Check(
             "logical_reconciliation",
-            len(snapshot.silver_event_ids) + snapshot.observed_duplicate_inputs + len(snapshot.dlq_coordinates)
+            len(snapshot.silver_event_ids)
+            + snapshot.observed_duplicate_inputs
+            + len(snapshot.dlq_coordinates)
             == config.expected_total,
             config.expected_total,
-            len(snapshot.silver_event_ids) + snapshot.observed_duplicate_inputs + len(snapshot.dlq_coordinates),
+            len(snapshot.silver_event_ids)
+            + snapshot.observed_duplicate_inputs
+            + len(snapshot.dlq_coordinates),
             "Canonical, duplicate, and invalid outcomes reconcile to the physical input count.",
         )
     )
@@ -175,13 +190,9 @@ def verify(config: VerificationConfig, snapshot: VerificationSnapshot) -> list[C
     for sample in snapshot.value_samples:
         expected = sample.expected
         actual = sample.actual
-        try:
-            price_mismatch = (
-                abs(float(expected.get("price", 0)) - float(actual.get("price", 0)))
-                > config.price_absolute_tolerance
-            )
-        except (TypeError, ValueError):
-            price_mismatch = True
+        price_mismatch = _numeric_mismatch(
+            expected.get("price"), actual.get("price"), config.price_absolute_tolerance
+        )
         if price_mismatch or (
             expected.get("symbol") != actual.get("symbol")
             or expected.get("volume") != actual.get("volume")
@@ -190,13 +201,21 @@ def verify(config: VerificationConfig, snapshot: VerificationSnapshot) -> list[C
             or expected.get("source_sequence") != actual.get("source_sequence")
         ):
             mismatches.append(sample.event_id)
-    digest_mismatches = [coordinate for coordinate, state in snapshot.bronze_digest_samples if state != "MATCH"]
+    digest_mismatches = [
+        coordinate for coordinate, state in snapshot.bronze_digest_samples if state != "MATCH"
+    ]
     checks.append(
         Check(
             "sampled_value_integrity",
-            not mismatches and not digest_mismatches,
+            bool(snapshot.value_samples)
+            and bool(snapshot.bronze_digest_samples)
+            and not mismatches
+            and not digest_mismatches,
             {"field_mismatches": 0, "bronze_digest_mismatches": 0},
-            {"field_mismatches": len(mismatches), "bronze_digest_mismatches": len(digest_mismatches)},
+            {
+                "field_mismatches": len(mismatches),
+                "bronze_digest_mismatches": len(digest_mismatches),
+            },
             "Deterministic samples compare Silver values and Bronze source-record digests; this is not exhaustive equality.",
         )
     )
@@ -205,21 +224,22 @@ def verify(config: VerificationConfig, snapshot: VerificationSnapshot) -> list[C
         for row in snapshot.expected_gold_rows
     }
     actual_gold = {
-        (str(row["symbol"]), int(row["window_start_ms"])): row
-        for row in snapshot.actual_gold_rows
+        (str(row["symbol"]), int(row["window_start_ms"])): row for row in snapshot.actual_gold_rows
     }
     gold_mismatches: list[str] = []
     for key, expected in expected_gold.items():
-        actual = actual_gold.get(key)
-        if actual is None:
+        actual_row = actual_gold.get(key)
+        if actual_row is None:
             gold_mismatches.append(f"{key}:missing")
             continue
         numeric_fields = ("open", "high", "low", "close", "vwap")
         if any(
-            abs(float(expected[field]) - float(actual[field]))
-            > config.price_absolute_tolerance
+            _numeric_mismatch(expected[field], actual_row[field], config.price_absolute_tolerance)
             for field in numeric_fields
-        ) or any(expected[field] != actual[field] for field in ("volume", "trade_count", "window_end_ms")):
+        ) or any(
+            expected[field] != actual_row[field]
+            for field in ("volume", "trade_count", "window_end_ms")
+        ):
             gold_mismatches.append(f"{key}:value")
     extra_gold = sorted(set(actual_gold) - set(expected_gold))
     gold_passed = bool(expected_gold) and not gold_mismatches and not extra_gold

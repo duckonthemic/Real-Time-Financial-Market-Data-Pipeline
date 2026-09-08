@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timezone
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +13,7 @@ from market_pipeline.ops.runtime import artifact, atomic_json, run_config_from_e
 def _event(row: Any, run_id: str) -> dict[str, Any]:
     event_time = row.event_time
     if event_time.tzinfo is None:
-        event_time = event_time.replace(tzinfo=timezone.utc)
+        event_time = event_time.replace(tzinfo=UTC)
     return {
         "run_id": run_id,
         "event_id": str(row.event_id),

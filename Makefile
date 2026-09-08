@@ -1,148 +1,44 @@
-# =============================================================================
-# Makefile for Real-Time Financial Market Data Pipeline
-# =============================================================================
+.PHONY: help install-dev test lint format format-check typecheck check demo-showcase demo-standard cleanup purge-evidence
 
-.PHONY: help install dev test lint format clean docker-up docker-down
+RUN_ID ?= run-local-showcase
 
-# Default target
 help:
-	@echo "=========================================="
-	@echo "Market Data Pipeline - Available Commands"
-	@echo "=========================================="
-	@echo "Setup:"
-	@echo "  make install      - Install Python dependencies"
-	@echo "  make dev          - Set up development environment"
-	@echo ""
-	@echo "Docker:"
-	@echo "  make docker-up    - Start all services"
-	@echo "  make docker-down  - Stop all services"
-	@echo "  make docker-logs  - View service logs"
-	@echo "  make docker-ps    - Show running services"
-	@echo ""
-	@echo "Development:"
-	@echo "  make test         - Run all tests"
-	@echo "  make lint         - Run linters"
-	@echo "  make format       - Format code"
-	@echo "  make clean        - Clean temporary files"
-	@echo ""
-	@echo "Pipeline:"
-	@echo "  make producer     - Start Finnhub producer"
-	@echo "  make spark-job    - Submit Spark job"
-	@echo "  make topics       - Create Kafka topics"
+	@echo "Market Data Reliability Lab"
+	@echo "  make install-dev                         Install the package and pinned dev tools"
+	@echo "  make check                               Run lint, format, types, and tests"
+	@echo "  make demo-showcase RUN_ID=<id>           Run the 1,236-record recovery scenario"
+	@echo "  make demo-standard RUN_ID=<id>           Run the 12,763-record recovery scenario"
+	@echo "  make cleanup RUN_ID=<id>                 Remove one run's runtime; retain evidence"
+	@echo "  make purge-evidence RUN_ID=<id>          Delete evidence after runtime cleanup"
 
-# =============================================================================
-# Setup
-# =============================================================================
-
-install:
-	pip install -r requirements.txt
-
-dev: install
-	pip install -e .
-	pre-commit install
-
-# =============================================================================
-# Docker
-# =============================================================================
-
-docker-up:
-	docker-compose up -d
-	@echo "Waiting for services to be healthy..."
-	@sleep 10
-	@docker-compose ps
-
-docker-down:
-	docker-compose down
-
-docker-logs:
-	docker-compose logs -f
-
-docker-ps:
-	docker-compose ps
-
-docker-clean:
-	docker-compose down -v --remove-orphans
-	docker system prune -f
-
-# =============================================================================
-# Kafka
-# =============================================================================
-
-topics:
-	docker-compose exec kafka kafka-topics --create \
-		--bootstrap-server localhost:9092 \
-		--topic trades_raw \
-		--partitions 10 \
-		--replication-factor 1 \
-		--if-not-exists
-	docker-compose exec kafka kafka-topics --create \
-		--bootstrap-server localhost:9092 \
-		--topic quotes_raw \
-		--partitions 5 \
-		--replication-factor 1 \
-		--if-not-exists
-	docker-compose exec kafka kafka-topics --list \
-		--bootstrap-server localhost:9092
-
-# =============================================================================
-# Cassandra
-# =============================================================================
-
-cassandra-init:
-	docker-compose exec cassandra cqlsh -f /docker-entrypoint-initdb.d/keyspace.cql
-
-cassandra-shell:
-	docker-compose exec cassandra cqlsh
-
-# =============================================================================
-# Testing
-# =============================================================================
+install-dev:
+	python -m pip install -e ".[dev]"
 
 test:
-	pytest tests/ -v --cov=src --cov-report=term-missing
-
-test-unit:
-	pytest tests/unit -v
-
-test-integration:
-	pytest tests/integration -v
-
-# =============================================================================
-# Code Quality
-# =============================================================================
+	python -m pytest
 
 lint:
-	flake8 src/ tests/
-	mypy src/
+	python -m ruff check .
 
 format:
-	black src/ tests/
-	isort src/ tests/
+	python -m ruff format .
 
-check: lint test
-	@echo "All checks passed!"
+format-check:
+	python -m ruff format --check .
 
-# =============================================================================
-# Pipeline
-# =============================================================================
+typecheck:
+	python -m mypy
 
-producer:
-	python -m src.producer.finnhub_client
+check: lint format-check typecheck test
 
-spark-job:
-	docker-compose exec spark-master spark-submit \
-		--master spark://spark-master:7077 \
-		--packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,com.datastax.spark:spark-cassandra-connector_2.12:3.4.1 \
-		/opt/spark/work-dir/src/consumer/spark_processor.py
+demo-showcase:
+	python scripts/demo.py --scenario recovery-showcase --run-id $(RUN_ID)
 
-# =============================================================================
-# Cleanup
-# =============================================================================
+demo-standard:
+	python scripts/demo.py --scenario recovery --run-id $(RUN_ID)
 
-clean:
-	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	find . -type f -name "*.pyc" -delete
-	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name ".mypy_cache" -exec rm -rf {} + 2>/dev/null || true
-	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
-	rm -rf build/ dist/ .coverage htmlcov/
+cleanup:
+	python scripts/demo.py --cleanup-run $(RUN_ID)
+
+purge-evidence:
+	python scripts/demo.py --purge-evidence $(RUN_ID)

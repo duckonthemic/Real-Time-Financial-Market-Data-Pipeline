@@ -8,14 +8,13 @@ import os
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
-from market_pipeline.ops.runtime import artifact, atomic_json, required_env
-from market_pipeline.ops.runtime import run_config_from_env
+from market_pipeline.ops.runtime import artifact, atomic_json, required_env, run_config_from_env
 from market_pipeline.verification.main import publish_evidence
 from market_pipeline.verification.report import write_report
-
 
 REQUIRED_TABLES = {
     "pipeline_runs",
@@ -55,9 +54,15 @@ def validate_dashboard_definition(dashboard: Mapping[str, Any]) -> list[str]:
     return errors
 
 
-def _request_json(url: str, username: str, password: str) -> Any:
-    token = base64.b64encode(f"{username}:{password}".encode("utf-8")).decode("ascii")
-    request = urllib.request.Request(url, headers={"Authorization": f"Basic {token}"})
+def _request_json(
+    url: str, username: str, password: str, payload: Mapping[str, Any] | None = None
+) -> Any:
+    token = base64.b64encode(f"{username}:{password}".encode()).decode("ascii")
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode() if payload is not None else None,
+        headers={"Authorization": f"Basic {token}", "Content-Type": "application/json"},
+    )
     with urllib.request.urlopen(request, timeout=10) as response:
         return json.loads(response.read().decode("utf-8"))
 
@@ -65,7 +70,9 @@ def _request_json(url: str, username: str, password: str) -> Any:
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
         return []
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
 
 def _poll_endpoint(
@@ -85,12 +92,44 @@ def _poll_endpoint(
     return {}
 
 
+def check_panel_queries(
+    dashboard: Mapping[str, Any], run_id: str, url: str, password: str
+) -> list[str]:
+    failures = []
+    for panel in dashboard.get("panels", []):
+        for target in panel.get("targets", []):
+            query = dict(target)
+            query["target"] = str(target.get("target", "")).replace("${run_id}", run_id)
+            query["datasource"] = panel.get("datasource", {})
+            query.update(format="table", intervalMs=1000, maxDataPoints=1000)
+            try:
+                response = _request_json(
+                    f"{url}/api/ds/query",
+                    "admin",
+                    password,
+                    {"queries": [query], "from": "now-24h", "to": "now"},
+                )
+                result = response.get("results", {}).get(query.get("refId", "A"), {})
+                frames = result.get("frames", [])
+                has_rows = any(
+                    any(column for column in frame.get("data", {}).get("values", []))
+                    for frame in frames
+                )
+                if result.get("error") or not has_rows:
+                    failures.append(f"Panel {panel.get('title')}: query failed or returned no rows")
+            except (OSError, ValueError) as exc:
+                failures.append(f"Panel {panel.get('title')}: {exc}")
+    return failures
+
+
 def main() -> int:
     run_id = required_env("RUN_ID")
     artifact_root = Path(required_env("ARTIFACT_PATH"))
     report_path = artifact_root / "run-report.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
-    dashboard_path = Path(os.environ.get("DASHBOARD_JSON", "grafana/dashboards/market-data-main.json"))
+    dashboard_path = Path(
+        os.environ.get("DASHBOARD_JSON", "grafana/dashboards/market-data-main.json")
+    )
     failures = validate_dashboard_definition(json.loads(dashboard_path.read_text(encoding="utf-8")))
     grafana_url = os.environ.get("GRAFANA_URL", "http://grafana:3000").rstrip("/")
     password = required_env("GRAFANA_ADMIN_PASSWORD")
@@ -115,15 +154,35 @@ def main() -> int:
     datasource_status = str(observations.get("datasource", {}).get("status", "")).lower()
     if datasource_status not in {"ok", "success"}:
         failures.append("Cassandra datasource health is not successful")
-    if observations.get("dashboard", {}).get("dashboard", {}).get("uid") != "market-data-reliability":
+    if (
+        observations.get("dashboard", {}).get("dashboard", {}).get("uid")
+        != "market-data-reliability"
+    ):
         failures.append("provisioned dashboard UID was not returned by Grafana")
+    served_dashboard = observations.get("dashboard", {}).get("dashboard", {})
+    failures.extend(validate_dashboard_definition(served_dashboard))
+    if not failures:
+        failures.extend(check_panel_queries(served_dashboard, run_id, grafana_url, password))
 
-    release_status = "READY" if not failures and report.get("data_contract_status") == "PASSED" else "NOT_READY"
+    release_status = (
+        "READY" if not failures and report.get("data_contract_status") == "PASSED" else "NOT_READY"
+    )
     report["portfolio_release_status"] = release_status
     report["release_checks"] = {
         "grafana_smoke": "PASSED" if not failures else "FAILED",
         "failures": failures,
     }
+    try:
+        publish_evidence(
+            run_config_from_env(),
+            report,
+            _read_jsonl(artifact_root / "state-transitions.jsonl"),
+            _read_jsonl(artifact_root / "metrics.jsonl"),
+        )
+    except Exception as exc:
+        failures.append(f"could not publish portfolio status: {exc}")
+        report["portfolio_release_status"] = "NOT_READY"
+        report["release_checks"]["grafana_smoke"] = "FAILED"
     atomic_json(report_path, report)
     write_report(
         artifact_root / "report.html",
@@ -141,16 +200,6 @@ def main() -> int:
             observations=observations,
         ),
     )
-    try:
-        publish_evidence(
-            run_config_from_env(),
-            report,
-            _read_jsonl(artifact_root / "state-transitions.jsonl"),
-            _read_jsonl(artifact_root / "metrics.jsonl"),
-        )
-    except Exception as exc:
-        failures.append(f"could not publish portfolio status: {exc}")
-        return 1
     return 0 if not failures else 1
 
 

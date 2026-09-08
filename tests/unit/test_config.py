@@ -8,7 +8,6 @@ import pytest
 from demo_support.config import compose_environment, load_demo_config, render_compose_env
 from demo_support.errors import ConfigFailure
 
-
 ROOT = Path(__file__).parents[2]
 
 
@@ -31,9 +30,16 @@ def test_compose_environment_is_run_scoped_and_complete() -> None:
 
 def test_rendered_environment_hash_redacts_password(tmp_path: Path) -> None:
     target = tmp_path / "compose.env"
-    digest = render_compose_env(target, {"RUN_ID": "run-20260907-a1", "GRAFANA_ADMIN_PASSWORD": "hunter2"})
-    assert target.read_text(encoding="utf-8") == "GRAFANA_ADMIN_PASSWORD=hunter2\nRUN_ID=run-20260907-a1\n"
-    expected = hashlib.sha256(b"GRAFANA_ADMIN_PASSWORD=<redacted>\nRUN_ID=run-20260907-a1\n").hexdigest()
+    digest = render_compose_env(
+        target, {"RUN_ID": "run-20260907-a1", "GRAFANA_ADMIN_PASSWORD": "hunter2"}
+    )
+    assert (
+        target.read_text(encoding="utf-8")
+        == "GRAFANA_ADMIN_PASSWORD=hunter2\nRUN_ID=run-20260907-a1\n"
+    )
+    expected = hashlib.sha256(
+        b"GRAFANA_ADMIN_PASSWORD=<redacted>\nRUN_ID=run-20260907-a1\n"
+    ).hexdigest()
     assert digest == expected
 
 

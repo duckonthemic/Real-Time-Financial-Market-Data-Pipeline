@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from market_pipeline.contracts.wire import WireContractError, inspect_confluent_payload, wrap_confluent_payload
+from market_pipeline.contracts.wire import (
+    WireContractError,
+    inspect_confluent_payload,
+    wrap_confluent_payload,
+)
 
 
 def test_round_trip_supported_envelope() -> None:

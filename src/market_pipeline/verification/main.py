@@ -6,13 +6,20 @@ import hashlib
 import json
 import os
 from collections import Counter
-from datetime import datetime, timezone
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, cast
 
 from market_pipeline.analytics.ohlcv import aggregate_ohlcv
 from market_pipeline.contracts.models import VerificationConfig
-from market_pipeline.ops.runtime import artifact, atomic_json, manifest_from_env, required_env, run_config_from_env
+from market_pipeline.ops.runtime import (
+    artifact,
+    atomic_json,
+    manifest_from_env,
+    required_env,
+    run_config_from_env,
+)
 from market_pipeline.producer.encoding import encode_event, load_avro_schema
 from market_pipeline.producer.fixture import canonical_event
 from market_pipeline.verification.invariants import ValueSample, VerificationSnapshot, verify
@@ -20,7 +27,10 @@ from market_pipeline.verification.report import write_report
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected a JSON object: {path}")
+    return cast(dict[str, Any], payload)
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -41,7 +51,7 @@ def _row_dict(row: Any) -> dict[str, Any]:
 
 def _epoch_ms(value: Any) -> int:
     if isinstance(value, datetime):
-        aware = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+        aware = value.replace(tzinfo=UTC) if value.tzinfo is None else value
         return int(aware.timestamp() * 1000)
     return int(value)
 
@@ -149,7 +159,9 @@ def publish_evidence(
         cluster.shutdown()
 
 
-def read_kafka_dlq_coordinates(run_id: str, topic: str, bootstrap_servers: str, partitions: int) -> frozenset[tuple[str, int, int]]:
+def read_kafka_dlq_coordinates(
+    run_id: str, topic: str, bootstrap_servers: str, partitions: int
+) -> frozenset[tuple[str, int, int]]:
     from confluent_kafka import Consumer, TopicPartition
 
     consumer = Consumer(
@@ -164,7 +176,9 @@ def read_kafka_dlq_coordinates(run_id: str, topic: str, bootstrap_servers: str, 
     assignments = []
     try:
         for partition in range(partitions):
-            low, high = consumer.get_watermark_offsets(TopicPartition(topic, partition), timeout=10, cached=False)
+            low, high = consumer.get_watermark_offsets(
+                TopicPartition(topic, partition), timeout=10, cached=False
+            )
             assignments.append(TopicPartition(topic, partition, low))
             bounds[partition] = high
         consumer.assign(assignments)
@@ -175,8 +189,14 @@ def read_kafka_dlq_coordinates(run_id: str, topic: str, bootstrap_servers: str, 
             message = consumer.poll(0.5)
             if message is None:
                 idle_polls += 1
-                positions = consumer.position([TopicPartition(topic, partition) for partition in range(partitions)])
-                completed.update(position.partition for position in positions if position.offset >= bounds[position.partition])
+                positions = consumer.position(
+                    [TopicPartition(topic, partition) for partition in range(partitions)]
+                )
+                completed.update(
+                    position.partition
+                    for position in positions
+                    if position.offset >= bounds[position.partition]
+                )
                 continue
             idle_polls = 0
             if message.error():
@@ -197,7 +217,9 @@ def read_kafka_dlq_coordinates(run_id: str, topic: str, bootstrap_servers: str, 
         consumer.close()
 
 
-def load_snapshot(config: Any, manifest: Mapping[str, Any]) -> tuple[VerificationSnapshot, list[dict[str, Any]], list[dict[str, Any]]]:
+def load_snapshot(
+    config: Any, manifest: Mapping[str, Any]
+) -> tuple[VerificationSnapshot, list[dict[str, Any]], list[dict[str, Any]]]:
     from cassandra.cluster import Cluster
 
     artifact_root = Path(config.artifact_path)
@@ -211,7 +233,9 @@ def load_snapshot(config: Any, manifest: Mapping[str, Any]) -> tuple[Verificatio
     dlq_rows: list[dict[str, Any]] = []
     batch_rows: list[dict[str, Any]] = []
     canonical_limit = int(manifest["canonical_records"])
-    expected_events = [canonical_event(manifest, config.run_id, sequence) for sequence in range(canonical_limit)]
+    expected_events = [
+        canonical_event(manifest, config.run_id, sequence) for sequence in range(canonical_limit)
+    ]
     expected_gold_source = aggregate_ohlcv(expected_events)
     actual_gold_rows: list[dict[str, Any]] = []
     try:
@@ -221,9 +245,25 @@ def load_snapshot(config: Any, manifest: Mapping[str, Any]) -> tuple[Verificatio
                 (config.run_id, config.input_topic, partition, start, ends[partition]),
             )
             bronze_rows.extend(_row_dict(row) for row in rows)
-        silver_rows = [_row_dict(row) for row in session.execute("SELECT * FROM silver_events_by_run WHERE run_id=%s", (config.run_id,))]
-        dlq_rows = [_row_dict(row) for row in session.execute("SELECT * FROM dlq_records_by_run WHERE owner_run_id=%s", (config.run_id,))]
-        batch_rows = [_row_dict(row) for row in session.execute("SELECT * FROM stream_batches_by_query WHERE run_id=%s AND query_name=%s", (config.run_id, "recovery_pipeline"))]
+        silver_rows = [
+            _row_dict(row)
+            for row in session.execute(
+                "SELECT * FROM silver_events_by_run WHERE run_id=%s", (config.run_id,)
+            )
+        ]
+        dlq_rows = [
+            _row_dict(row)
+            for row in session.execute(
+                "SELECT * FROM dlq_records_by_run WHERE owner_run_id=%s", (config.run_id,)
+            )
+        ]
+        batch_rows = [
+            _row_dict(row)
+            for row in session.execute(
+                "SELECT * FROM stream_batches_by_query WHERE run_id=%s AND query_name=%s",
+                (config.run_id, "recovery_pipeline"),
+            )
+        ]
         for symbol, window_date in sorted(
             {(str(row["symbol"]), row["window_date"]) for row in expected_gold_source},
             key=lambda item: (item[0], str(item[1])),
@@ -236,22 +276,33 @@ def load_snapshot(config: Any, manifest: Mapping[str, Any]) -> tuple[Verificatio
     finally:
         cluster.shutdown()
 
-    coordinates = frozenset((row["source_topic"], int(row["source_partition"]), int(row["source_offset"])) for row in bronze_rows)
-    dlq_coordinates = frozenset((row["source_topic"], int(row["source_partition"]), int(row["source_offset"])) for row in dlq_rows)
+    coordinates = frozenset(
+        (row["source_topic"], int(row["source_partition"]), int(row["source_offset"]))
+        for row in bronze_rows
+    )
+    dlq_coordinates = frozenset(
+        (row["source_topic"], int(row["source_partition"]), int(row["source_offset"]))
+        for row in dlq_rows
+    )
     sequence_counts = Counter(
         int(row["claimed_source_sequence"])
         for row in bronze_rows
-        if row.get("claimed_source_sequence") is not None and 0 <= int(row["claimed_source_sequence"]) < canonical_limit
+        if row.get("claimed_source_sequence") is not None
+        and 0 <= int(row["claimed_source_sequence"]) < canonical_limit
     )
     observed_duplicates = sum(count - 1 for count in sequence_counts.values() if count > 1)
     latest = max(batch_rows, key=lambda row: int(row["batch_id"]), default={})
-    cumulative = {int(key): int(value) for key, value in (latest.get("cumulative_next_offsets") or {}).items()}
+    cumulative = {
+        int(key): int(value) for key, value in (latest.get("cumulative_next_offsets") or {}).items()
+    }
     timeline = _read_jsonl(artifact_root / "state-transitions.jsonl")
     metrics = _read_jsonl(artifact_root / "metrics.jsonl")
     states = {str(item.get("state")) for item in timeline}
     lag_rise = max((int(item.get("total_lag", 0)) for item in metrics), default=0)
 
-    selected = sorted(expected_events, key=lambda event: event["event_id"])[: int(manifest.get("sample_size", 256))]
+    selected = sorted(expected_events, key=lambda event: event["event_id"])[
+        : int(manifest.get("sample_size", 256))
+    ]
     for boundary in (expected_events[0], expected_events[-1]):
         if boundary not in selected:
             selected.append(boundary)
@@ -263,7 +314,9 @@ def load_snapshot(config: Any, manifest: Mapping[str, Any]) -> tuple[Verificatio
             "symbol": actual_row.get("symbol"),
             "price": actual_row.get("price"),
             "volume": actual_row.get("volume"),
-            "event_time_ms": _epoch_ms(actual_row["event_time"]) if actual_row.get("event_time") else None,
+            "event_time_ms": _epoch_ms(actual_row["event_time"])
+            if actual_row.get("event_time")
+            else None,
             "conditions": list(actual_row.get("conditions") or []),
             "source_sequence": actual_row.get("source_sequence"),
         }
@@ -271,14 +324,18 @@ def load_snapshot(config: Any, manifest: Mapping[str, Any]) -> tuple[Verificatio
 
     schema = load_avro_schema(Path(config.schema_path))
     expected_digest_by_sequence = {
-        int(event["source_sequence"]): hashlib.sha256(encode_event(event, schema, config.schema_id)).hexdigest()
+        int(event["source_sequence"]): hashlib.sha256(
+            encode_event(event, schema, config.schema_id)
+        ).hexdigest()
         for event in selected
     }
     actual_digests: dict[int, list[str]] = {}
     for row in bronze_rows:
         sequence = row.get("claimed_source_sequence")
         if sequence is not None and int(sequence) in expected_digest_by_sequence:
-            actual_digests.setdefault(int(sequence), []).append(hashlib.sha256(bytes(row["raw_value"])).hexdigest())
+            actual_digests.setdefault(int(sequence), []).append(
+                hashlib.sha256(bytes(row["raw_value"])).hexdigest()
+            )
     bronze_digest_samples = tuple(
         (
             str(sequence),
@@ -304,7 +361,9 @@ def load_snapshot(config: Any, manifest: Mapping[str, Any]) -> tuple[Verificatio
         kafka_dlq_coordinates=kafka_dlq,
         dlq_rejection_codes=tuple(str(row["rejection_code"]) for row in dlq_rows),
         cumulative_next_offsets=cumulative,
-        terminal_lag=int(metrics[-1].get("total_lag", 0)) if metrics else sum(ends.values()) - sum(cumulative.values()),
+        terminal_lag=int(metrics[-1].get("total_lag", 0))
+        if metrics
+        else sum(ends.values()) - sum(cumulative.values()),
         batch_statuses=tuple(str(row["status"]) for row in batch_rows),
         recovery_observed={"FAILURE_INJECTED", "RECOVERING"}.issubset(states),
         lag_rise=lag_rise,
@@ -327,7 +386,9 @@ def main() -> int:
         expected_duplicates=int(manifest["duplicate_records"]),
         expected_invalid=int(manifest["invalid_records"]),
         expected_total=int(manifest["total_records"]),
-        expected_rejections={str(key): int(value) for key, value in manifest["rejection_counts"].items()},
+        expected_rejections={
+            str(key): int(value) for key, value in manifest["rejection_counts"].items()
+        },
         expected_event_set_sha256=str(manifest["canonical_event_set_sha256"]),
         sample_size=int(os.environ.get("VERIFY_SAMPLE_SIZE", "256")),
     )

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Mapping
-
+from typing import Any
 
 MISSING_OR_INVALID_HEADER = "MISSING_OR_INVALID_HEADER"
 BAD_WIRE = "BAD_WIRE"
@@ -69,9 +69,13 @@ def validate_event(
         or produced_at_ms <= 0
         or decoded_headers["payload_type"] not in {"avro-confluent-v1", "malformed-test-v1"}
     ):
-        return ValidationOutcome(False, MISSING_OR_INVALID_HEADER, "required Kafka header missing or invalid")
+        return ValidationOutcome(
+            False, MISSING_OR_INVALID_HEADER, "required Kafka header missing or invalid"
+        )
     if wire_error or event is None:
-        return ValidationOutcome(False, BAD_WIRE, "value does not match the provisioned Confluent Avro envelope")
+        return ValidationOutcome(
+            False, BAD_WIRE, "value does not match the provisioned Confluent Avro envelope"
+        )
     if (
         decoded_headers["run_id"] != expected_run_id
         or decoded_headers["dataset_id"] != expected_dataset_id
@@ -79,17 +83,31 @@ def validate_event(
         or event.get("dataset_id") != decoded_headers["dataset_id"]
         or event.get("source_sequence") != source_sequence
     ):
-        return ValidationOutcome(False, HEADER_PAYLOAD_MISMATCH, "header attribution differs from payload or run")
+        return ValidationOutcome(
+            False, HEADER_PAYLOAD_MISMATCH, "header attribution differs from payload or run"
+        )
     symbol = event.get("symbol")
     if not isinstance(symbol, str) or not symbol.strip():
         return ValidationOutcome(False, EMPTY_SYMBOL, "symbol is empty after trimming")
     price = event.get("price")
-    if not isinstance(price, (int, float)) or isinstance(price, bool) or not math.isfinite(price) or price <= 0:
-        return ValidationOutcome(False, NON_POSITIVE_PRICE, "price must be finite and greater than zero")
+    if (
+        not isinstance(price, int | float)
+        or isinstance(price, bool)
+        or not math.isfinite(price)
+        or price <= 0
+    ):
+        return ValidationOutcome(
+            False, NON_POSITIVE_PRICE, "price must be finite and greater than zero"
+        )
     volume = event.get("volume")
     if not isinstance(volume, int) or isinstance(volume, bool) or volume <= 0:
         return ValidationOutcome(False, NON_POSITIVE_VOLUME, "volume must be a positive integer")
     event_time_ms = event.get("event_time_ms")
-    if not isinstance(event_time_ms, int) or not min_event_time_ms <= event_time_ms <= max_event_time_ms:
-        return ValidationOutcome(False, TIMESTAMP_OUT_OF_RANGE, "event_time_ms is outside the fixture range")
+    if (
+        not isinstance(event_time_ms, int)
+        or not min_event_time_ms <= event_time_ms <= max_event_time_ms
+    ):
+        return ValidationOutcome(
+            False, TIMESTAMP_OUT_OF_RANGE, "event_time_ms is outside the fixture range"
+        )
     return ValidationOutcome(True)

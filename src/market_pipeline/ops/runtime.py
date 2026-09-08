@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, cast
 
 from market_pipeline.contracts.models import RunConfig
 
 
 def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def required_env(name: str) -> str:
@@ -43,7 +44,10 @@ def run_config_from_env() -> RunConfig:
 
 
 def manifest_from_env() -> dict[str, Any]:
-    return json.loads(Path(required_env("SCENARIO_MANIFEST")).read_text(encoding="utf-8"))
+    payload = json.loads(Path(required_env("SCENARIO_MANIFEST")).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("scenario manifest must contain a JSON object")
+    return cast(dict[str, Any], payload)
 
 
 def atomic_json(path: Path, value: Mapping[str, Any]) -> None:
@@ -58,4 +62,10 @@ def atomic_json(path: Path, value: Mapping[str, Any]) -> None:
 
 
 def artifact(artifact_type: str, run_id: str, **values: Any) -> dict[str, Any]:
-    return {"artifact_type": artifact_type, "schema_version": 1, "run_id": run_id, "updated_at": utc_now(), **values}
+    return {
+        "artifact_type": artifact_type,
+        "schema_version": 1,
+        "run_id": run_id,
+        "updated_at": utc_now(),
+        **values,
+    }

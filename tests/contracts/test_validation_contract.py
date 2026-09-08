@@ -13,7 +13,6 @@ from market_pipeline.contracts.validation import (
     validate_event,
 )
 
-
 RUN = "run-20260907-a1"
 DATASET = "dataset-v1"
 
@@ -44,7 +43,9 @@ def event(**overrides: object) -> dict[str, object]:
     return values
 
 
-def outcome(value: dict[str, object] | None, header_values: dict[str, str], *, wire_error: bool = False):
+def outcome(
+    value: dict[str, object] | None, header_values: dict[str, str], *, wire_error: bool = False
+):
     return validate_event(
         value,
         header_values,

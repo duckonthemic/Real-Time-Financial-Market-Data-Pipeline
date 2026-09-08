@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import time
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -55,8 +53,14 @@ def register_schema() -> int:
     registry = required_env("SCHEMA_REGISTRY_URL").rstrip("/")
     subject = "market.trades.v1-value"
     schema_text = Path("schemas/trade_event_v1.avsc").read_text(encoding="utf-8")
-    _request_json(f"{registry}/config/{subject}", method="PUT", payload={"compatibility": "BACKWARD_TRANSITIVE"})
-    result = _request_json(f"{registry}/subjects/{subject}/versions", method="POST", payload={"schema": schema_text})
+    _request_json(
+        f"{registry}/config/{subject}",
+        method="PUT",
+        payload={"compatibility": "BACKWARD_TRANSITIVE"},
+    )
+    result = _request_json(
+        f"{registry}/subjects/{subject}/versions", method="POST", payload={"schema": schema_text}
+    )
     return int(result["id"])
 
 
@@ -66,7 +70,10 @@ def create_cassandra_schema() -> None:
     cluster = Cluster([required_env("CASSANDRA_HOST")])
     session = cluster.connect()
     try:
-        for path in (Path("schemas/cassandra/001_keyspace.cql"), Path("schemas/cassandra/002_tables.cql")):
+        for path in (
+            Path("schemas/cassandra/001_keyspace.cql"),
+            Path("schemas/cassandra/002_tables.cql"),
+        ):
             script = path.read_text(encoding="utf-8")
             for statement in (part.strip() for part in script.split(";") if part.strip()):
                 session.execute(statement)
@@ -87,7 +94,9 @@ def capture_end_offsets(topic: str, partitions: int) -> dict[int, int]:
     try:
         result = {}
         for partition in range(partitions):
-            _, high = consumer.get_watermark_offsets(TopicPartition(topic, partition), timeout=10, cached=False)
+            _, high = consumer.get_watermark_offsets(
+                TopicPartition(topic, partition), timeout=10, cached=False
+            )
             result[partition] = high
         return result
     finally:
@@ -95,7 +104,10 @@ def capture_end_offsets(topic: str, partitions: int) -> dict[int, int]:
 
 
 def spark_starting_offsets(topic: str, offsets: dict[int, int]) -> str:
-    return json.dumps({topic: {str(partition): offset for partition, offset in offsets.items()}}, separators=(",", ":"))
+    return json.dumps(
+        {topic: {str(partition): offset for partition, offset in offsets.items()}},
+        separators=(",", ":"),
+    )
 
 
 def main() -> int:
